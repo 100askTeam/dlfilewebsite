@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Runtime files
+admin_auth.json
+access_stats.json
+.secret_key
+.env
+
+# Generated pages
+index.html
+**/index.html
+
+# Resource directories
+Hardware/
+Video/
+Tools/
+Images/
+images/
+
+# Archives and temp
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.img
+*.img.gz
+*.xz
+*.bin
+*.deb
+*.log
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

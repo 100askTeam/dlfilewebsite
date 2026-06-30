@@ -1,0 +1,20 @@
+[Unit]
+Description=100ASK Download Site
+After=network.target
+
+[Service]
+Type=simple
+User=www
+Group=www
+WorkingDirectory=/home1/dlfile/server_release_bundle
+Environment=HOST=127.0.0.1
+Environment=PORT=5000
+Environment=DEBUG=false
+EnvironmentFile=-/home1/dlfile/server_release_bundle/.env
+ExecStart=/home1/dlfile/server_release_bundle/.venv/bin/gunicorn -c /home1/dlfile/server_release_bundle/gunicorn.conf.py wsgi:app
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

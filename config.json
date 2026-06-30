@@ -1,0 +1,289 @@
+{
+    "breadcrumb": {
+        "fallback_levels": 2,
+        "start_from": "AppBaseCode"
+    },
+    "exclude": {
+        "extensions": [
+            ".tmp",
+            ".temp",
+            ".bak",
+            ".swp",
+            ".py",
+            ".json",
+            ".txt",
+            ".html"
+        ],
+        "files": [
+            "Thumbs.db",
+            "desktop.ini",
+            ".DS_Store",
+            "index.html"
+        ],
+        "hidden": true
+    },
+    "file_icons": {
+        ".3mf": {
+            "color": "#e67e22",
+            "icon": "3d"
+        },
+        ".7z": {
+            "color": "#8e44ad",
+            "icon": "archive"
+        },
+        ".bin": {
+            "color": "#7f8c8d",
+            "icon": "binary"
+        },
+        ".bz2": {
+            "color": "#8e44ad",
+            "icon": "archive"
+        },
+        ".c": {
+            "color": "#2ecc71",
+            "icon": "code"
+        },
+        ".cpp": {
+            "color": "#2ecc71",
+            "icon": "code"
+        },
+        ".csv": {
+            "color": "#27ae60",
+            "icon": "data"
+        },
+        ".deb": {
+            "color": "#d35400",
+            "icon": "package"
+        },
+        ".doc": {
+            "color": "#2980b9",
+            "icon": "doc"
+        },
+        ".docx": {
+            "color": "#2980b9",
+            "icon": "doc"
+        },
+        ".exe": {
+            "color": "#e74c3c",
+            "icon": "executable"
+        },
+        ".gz": {
+            "color": "#8e44ad",
+            "icon": "archive"
+        },
+        ".h": {
+            "color": "#2ecc71",
+            "icon": "code"
+        },
+        ".h264": {
+            "color": "#e74c3c",
+            "icon": "video"
+        },
+        ".img": {
+            "color": "#e74c3c",
+            "icon": "disc"
+        },
+        ".img.gz": {
+            "color": "#e74c3c",
+            "icon": "disc"
+        },
+        ".img.xz": {
+            "color": "#e74c3c",
+            "icon": "disc"
+        },
+        ".iso": {
+            "color": "#e74c3c",
+            "icon": "disc"
+        },
+        ".jpeg": {
+            "color": "#1abc9c",
+            "icon": "image"
+        },
+        ".jpg": {
+            "color": "#1abc9c",
+            "icon": "image"
+        },
+        ".js": {
+            "color": "#f1c40f",
+            "icon": "code"
+        },
+        ".json": {
+            "color": "#27ae60",
+            "icon": "data"
+        },
+        ".md": {
+            "color": "#95a5a6",
+            "icon": "text"
+        },
+        ".mp4": {
+            "color": "#e74c3c",
+            "icon": "video"
+        },
+        ".onnx": {
+            "color": "#9b59b6",
+            "icon": "model"
+        },
+        ".pdf": {
+            "color": "#c0392b",
+            "icon": "pdf"
+        },
+        ".png": {
+            "color": "#1abc9c",
+            "icon": "image"
+        },
+        ".ppt": {
+            "color": "#e67e22",
+            "icon": "ppt"
+        },
+        ".pptx": {
+            "color": "#e67e22",
+            "icon": "ppt"
+        },
+        ".pth": {
+            "color": "#9b59b6",
+            "icon": "model"
+        },
+        ".py": {
+            "color": "#3498db",
+            "icon": "code"
+        },
+        ".rknn": {
+            "color": "#9b59b6",
+            "icon": "model"
+        },
+        ".sh": {
+            "color": "#2ecc71",
+            "icon": "code"
+        },
+        ".stl": {
+            "color": "#e67e22",
+            "icon": "3d"
+        },
+        ".svg": {
+            "color": "#1abc9c",
+            "icon": "image"
+        },
+        ".tar.bz2": {
+            "color": "#8e44ad",
+            "icon": "archive"
+        },
+        ".tar.gz": {
+            "color": "#8e44ad",
+            "icon": "archive"
+        },
+        ".tar.xz": {
+            "color": "#8e44ad",
+            "icon": "archive"
+        },
+        ".txt": {
+            "color": "#95a5a6",
+            "icon": "text"
+        },
+        ".xls": {
+            "color": "#27ae60",
+            "icon": "xls"
+        },
+        ".xlsx": {
+            "color": "#27ae60",
+            "icon": "xls"
+        },
+        ".xml": {
+            "color": "#27ae60",
+            "icon": "data"
+        },
+        ".xz": {
+            "color": "#8e44ad",
+            "icon": "archive"
+        },
+        ".zip": {
+            "color": "#8e44ad",
+            "icon": "archive"
+        },
+        "Makefile": {
+            "color": "#e67e22",
+            "icon": "build"
+        },
+        "default": {
+            "color": "#95a5a6",
+            "icon": "file"
+        },
+        "folder": {
+            "color": "#f39c12",
+            "icon": "folder"
+        }
+    },
+    "footer": {
+        "copyright": "© 深圳百问科技有限公司 All Rights Reserved",
+        "links": [
+            {
+                "href": "/",
+                "text": "资源下载中心"
+            },
+            {
+                "href": "https://beian.miit.gov.cn/",
+                "text": "粤ICP备13035650号"
+            }
+        ]
+    },
+    "header": {
+        "nav_links": [
+            {
+                "href": "/",
+                "icon": "home",
+                "text": "首页"
+            },
+            {
+                "href": "/Hardware/",
+                "icon": "chip",
+                "text": "硬件资源"
+            },
+            {
+                "href": "/Video/",
+                "icon": "video",
+                "text": "视频教程"
+            }
+        ]
+    },
+    "intro": {
+        "content": "提供嵌入式开发板系统镜像、原理图、工具软件等资源下载。支持按名称、大小、日期排序，支持搜索筛选，响应式设计适配各种设备。",
+        "enabled": true,
+        "features": [
+            {
+                "icon": "📦",
+                "text": "系统镜像与工具下载"
+            },
+            {
+                "icon": "📋",
+                "text": "原理图与数据手册"
+            },
+            {
+                "icon": "🔍",
+                "text": "文件搜索与筛选"
+            },
+            {
+                "icon": "📊",
+                "text": "多维度排序"
+            },
+            {
+                "icon": "📱",
+                "text": "响应式设计"
+            },
+            {
+                "icon": "⚡",
+                "text": "快速加载"
+            }
+        ],
+        "title": "✨ 百问科技资源下载中心"
+    },
+    "site": {
+        "language": "zh-CN",
+        "logo_text": "100ASK DL",
+        "subtitle": "百问科技资源下载站",
+        "title": "系统镜像工具 原理图 软件下载中心",
+        "url": "https://dl.100ask.net"
+    },
+    "stats": {
+        "enabled": true,
+        "log_file": "access_stats.json"
+    }
+}

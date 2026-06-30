@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="{{language}}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{page_title}}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📥</text></svg>">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #dbeafe;
+            --success: #16a34a;
+            --warning: #f59e0b;
+            --danger: #dc2626;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+            --radius: 8px;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+            background-color: var(--gray-50);
+            color: var(--gray-800);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container { max-width: 1280px; margin: 0 auto; padding: 0 24px; width: 100%; }
+
+        /* === Header / Navbar === */
+        .navbar {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: #fff;
+            padding: 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow-md);
+        }
+        .navbar .container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 56px;
+        }
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: #fff;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+        .navbar-brand .logo-icon {
+            width: 32px; height: 32px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+        }
+        .navbar-links {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .navbar-links a {
+            color: rgba(255,255,255,0.85);
+            text-decoration: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .navbar-links a:hover {
+            background: rgba(255,255,255,0.15);
+            color: #fff;
+        }
+        .navbar-links a .nav-icon { font-size: 16px; }
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        /* === Breadcrumb === */
+        .breadcrumb-bar {
+            background: #fff;
+            border-bottom: 1px solid var(--gray-200);
+            padding: 10px 0;
+            font-size: 13px;
+        }
+        .breadcrumb-bar .container {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .breadcrumb-bar .bc-home {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .breadcrumb-bar .bc-home:hover { text-decoration: underline; }
+        .breadcrumb-bar .bc-sep { color: var(--gray-400); font-size: 12px; }
+        .breadcrumb-bar .bc-part {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .breadcrumb-bar .bc-part:hover { text-decoration: underline; }
+        .breadcrumb-bar .bc-current {
+            color: var(--gray-700);
+            font-weight: 600;
+        }
+
+        /* === Intro Section === */
+        .intro-section {
+            background: #fff;
+            border-bottom: 1px solid var(--gray-200);
+            padding: 20px 0;
+        }
+        .intro-card {
+            background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
+            border: 1px solid #bfdbfe;
+            border-radius: var(--radius);
+            padding: 20px 24px;
+        }
+        .intro-card h3 {
+            font-size: 16px;
+            color: var(--primary-dark);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .intro-card p {
+            font-size: 14px;
+            color: var(--gray-600);
+            margin-bottom: 12px;
+        }
+        .intro-features {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 8px;
+        }
+        .intro-features .feat {
+            font-size: 13px;
+            color: var(--gray-700);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .intro-features .feat-icon { font-size: 16px; }
+
+        /* === README Section === */
+        .readme-section {
+            background: #fff;
+            border-bottom: 1px solid var(--gray-200);
+            padding: 0;
+        }
+        .readme-card {
+            background: #fffdf7;
+            border: 1px solid #fde68a;
+            border-radius: var(--radius);
+            padding: 20px 24px;
+        }
+        .readme-card .readme-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #fde68a;
+        }
+        .readme-card .readme-header .readme-icon { font-size: 18px; }
+        .readme-card .readme-header span {
+            font-size: 14px;
+            font-weight: 600;
+            color: #92400e;
+        }
+        .readme-card .readme-body {
+            font-size: 14px;
+            color: var(--gray-700);
+            line-height: 1.8;
+        }
+        .readme-card .readme-body h1,
+        .readme-card .readme-body h2,
+        .readme-card .readme-body h3 {
+            color: #92400e;
+            margin: 12px 0 6px 0;
+            font-weight: 600;
+        }
+        .readme-card .readme-body h1 { font-size: 18px; }
+        .readme-card .readme-body h2 { font-size: 16px; }
+        .readme-card .readme-body h3 { font-size: 15px; }
+        .readme-card .readme-body p { margin: 6px 0; }
+        .readme-card .readme-body ul,
+        .readme-card .readme-body ol { margin: 6px 0; padding-left: 20px; }
+        .readme-card .readme-body li { margin: 2px 0; }
+        .readme-card .readme-body code {
+            background: #fef3c7;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 13px;
+            font-family: "SF Mono", "Monaco", "Menlo", "Consolas", monospace;
+        }
+        .readme-card .readme-body pre {
+            background: #1f2937;
+            color: #e5e7eb;
+            padding: 12px 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 8px 0;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .readme-card .readme-body pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+        .readme-card .readme-body a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+        .readme-card .readme-body a:hover { text-decoration: underline; }
+        .readme-card .readme-body blockquote {
+            border-left: 3px solid #f59e0b;
+            padding-left: 12px;
+            margin: 8px 0;
+            color: var(--gray-500);
+        }
+        .readme-card .readme-body table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 8px 0;
+        }
+        .readme-card .readme-body th,
+        .readme-card .readme-body td {
+            border: 1px solid #e5e7eb;
+            padding: 6px 10px;
+            font-size: 13px;
+        }
+        .readme-card .readme-body th { background: #fef3c7; font-weight: 600; }
+
+        /* === Toolbar === */
+        .toolbar {
+            background: #fff;
+            border-bottom: 1px solid var(--gray-200);
+            padding: 12px 0;
+        }
+        .toolbar .container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .dir-label {
+            font-size: 14px;
+            color: var(--gray-500);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .dir-label strong {
+            color: var(--primary);
+            font-weight: 600;
+            font-family: "SF Mono", "Monaco", "Menlo", "Consolas", monospace;
+            font-size: 13px;
+            background: var(--primary-light);
+            padding: 2px 8px;
+            border-radius: 4px;
+            letter-spacing: -0.2px;
+        }
+        .search-box {
+            position: relative;
+            flex: 0 1 320px;
+            min-width: 200px;
+        }
+        .search-box input {
+            width: 100%;
+            padding: 8px 12px 8px 36px;
+            border: 1px solid var(--gray-300);
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: var(--gray-50);
+        }
+        .search-box input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-light);
+            background: #fff;
+        }
+        .search-box .search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--gray-400);
+            font-size: 14px;
+            pointer-events: none;
+        }
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .filter-btn {
+            padding: 6px 12px;
+            border: 1px solid var(--gray-300);
+            border-radius: 6px;
+            background: #fff;
+            font-size: 13px;
+            color: var(--gray-600);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .filter-btn:hover { border-color: var(--primary); color: var(--primary); }
+        .filter-btn.active {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+        .filter-btn .filter-icon { font-size: 14px; }
+
+        /* === File Table === */
+        .file-section {
+            flex: 1;
+            padding: 16px 0;
+        }
+        .file-table-wrap {
+            background: #fff;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+        .file-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .file-table thead {
+            background: var(--gray-50);
+            border-bottom: 2px solid var(--gray-200);
+        }
+        .file-table th {
+            padding: 10px 16px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            user-select: none;
+        }
+        .file-table th.sortable {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .file-table th.sortable:hover { color: var(--primary); }
+        .file-table th.asc::after { content: " ↑"; color: var(--primary); font-size: 11px; }
+        .file-table th.desc::after { content: " ↓"; color: var(--primary); font-size: 11px; }
+        .file-table td {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--gray-100);
+            font-size: 14px;
+            vertical-align: middle;
+        }
+        .file-table tbody tr {
+            transition: background 0.15s;
+        }
+        .file-table tbody tr:hover {
+            background: var(--primary-light);
+        }
+        .file-table tbody tr.parent-row {
+            background: var(--gray-50);
+        }
+        .file-table tbody tr.parent-row:hover {
+            background: var(--gray-100);
+        }
+
+        /* File name cell */
+        .fname {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .fname-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            flex-shrink: 0;
+        }
+        .fname-icon.icon-folder { background: #fef3c7; }
+        .fname-icon.icon-parent { background: #f3f4f6; }
+        .fname-icon.icon-iso { background: #fee2e2; }
+        .fname-icon.icon-archive { background: #ede9fe; }
+        .fname-icon.icon-pdf { background: #fee2e2; }
+        .fname-icon.icon-code { background: #dcfce7; }
+        .fname-icon.icon-image { background: #ccfbf1; }
+        .fname-icon.icon-data { background: #dcfce7; }
+        .fname-icon.icon-model { background: #ede9fe; }
+        .fname-icon.icon-video { background: #fee2e2; }
+        .fname-icon.icon-binary { background: #f3f4f6; }
+        .fname-icon.icon-doc { background: #dbeafe; }
+        .fname-icon.icon-xls { background: #dcfce7; }
+        .fname-icon.icon-ppt { background: #ffedd5; }
+        .fname-icon.icon-text { background: #f3f4f6; }
+        .fname-icon.icon-build { background: #ffedd5; }
+        .fname-icon.icon-3d { background: #ffedd5; }
+        .fname-icon.icon-package { background: #ffedd5; }
+        .fname-icon.icon-executable { background: #fee2e2; }
+        .fname-icon.icon-default { background: #f3f4f6; }
+
+        .fname-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        .fname-link:hover { color: var(--primary-dark); text-decoration: underline; }
+        .fname-link.dir-link { color: var(--success); }
+        .fname-link.dir-link:hover { color: #15803d; }
+        .fname-link.parent-link { color: var(--gray-500); }
+        .fname-link.parent-link:hover { color: var(--gray-700); }
+
+        .file-ext-badge {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 1px 6px;
+            border-radius: 3px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        /* Size & Date */
+        .cell-size {
+            text-align: right;
+            color: var(--gray-500);
+            font-family: "SF Mono", "Monaco", "Menlo", "Consolas", monospace;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        .cell-date {
+            color: var(--gray-500);
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        /* Download button */
+        .dl-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border: 1px solid var(--primary);
+            border-radius: 4px;
+            background: #fff;
+            color: var(--primary);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .dl-btn:hover {
+            background: var(--primary);
+            color: #fff;
+        }
+        .dl-btn .dl-icon { font-size: 13px; }
+
+        /* No results */
+        .no-results {
+            text-align: center;
+            padding: 48px 20px;
+            color: var(--gray-400);
+        }
+        .no-results .nr-icon { font-size: 48px; margin-bottom: 12px; }
+        .no-results p { font-size: 15px; }
+
+        /* Stats bar */
+        .stats-bar {
+            padding: 8px 16px;
+            background: var(--gray-50);
+            border-top: 1px solid var(--gray-100);
+            font-size: 12px;
+            color: var(--gray-400);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* === Footer === */
+        .site-footer {
+            background: var(--gray-800);
+            color: var(--gray-400);
+            padding: 24px 0;
+            margin-top: auto;
+        }
+        .footer-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .footer-copy { font-size: 13px; }
+        .footer-links {
+            display: flex;
+            gap: 16px;
+        }
+        .footer-links a {
+            color: var(--gray-400);
+            text-decoration: none;
+            font-size: 13px;
+            transition: color 0.2s;
+        }
+        .footer-links a:hover { color: #fff; }
+
+        /* === Responsive === */
+        @media (max-width: 768px) {
+            .container { padding: 0 12px; }
+            .navbar-links { display: none; }
+            .navbar-links.open {
+                display: flex;
+                flex-direction: column;
+                position: absolute;
+                top: 56px;
+                left: 0;
+                right: 0;
+                background: var(--primary-dark);
+                padding: 8px;
+                box-shadow: var(--shadow-lg);
+            }
+            .mobile-menu-btn { display: block; }
+            .intro-features { grid-template-columns: repeat(2, 1fr); }
+            .search-box { flex: 1 1 100%; min-width: 0; }
+            .toolbar .container { flex-direction: column; align-items: stretch; }
+            .toolbar-left { flex-wrap: wrap; }
+            .file-table th, .file-table td { padding: 8px 10px; }
+            .fname-icon { width: 24px; height: 24px; font-size: 13px; }
+            .cell-size, .cell-date { font-size: 11px; }
+            .dl-btn { padding: 3px 8px; font-size: 11px; }
+            .file-ext-badge { display: none; }
+            .footer-inner { flex-direction: column; text-align: center; }
+        }
+
+        @media (max-width: 480px) {
+            .intro-features { grid-template-columns: 1fr; }
+            .filter-group { flex-wrap: wrap; }
+        }
+
+        /* === Scrollbar === */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--gray-100); }
+        ::-webkit-scrollbar-thumb { background: var(--gray-300); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--gray-400); }
+
+        /* === Animation === */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .file-table tbody tr { animation: fadeIn 0.2s ease-out; }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container">
+            <a href="/" class="navbar-brand">
+                <span class="logo-icon">📥</span>
+                <span>{{site_title}}</span>
+            </a>
+            <div class="navbar-links" id="navLinks">
+                {{nav_links}}
+            </div>
+            <button class="mobile-menu-btn" onclick="document.getElementById('navLinks').classList.toggle('open')">☰</button>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <div class="breadcrumb-bar">
+        <div class="container">
+            <a href="/" class="bc-home">🏠 Home</a>
+            {{breadcrumb_parts}}
+        </div>
+    </div>
+
+    <!-- Intro -->
+    <section class="intro-section">
+        <div class="container">
+            <div class="intro-card">
+                <h3>{{intro_title}}</h3>
+                <p>{{intro_content}}</p>
+                <div class="intro-features">
+                    {{intro_features}}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- README -->
+    {{readme_section}}
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <div class="container">
+            <div class="toolbar-left">
+                <span class="dir-label">📂 <strong>{{dir_display}}</strong></span>
+                <div class="filter-group">
+                    <button class="filter-btn active" data-filter="all" onclick="filterFiles('all',this)"><span class="filter-icon">📋</span> 全部</button>
+                    <button class="filter-btn" data-filter="dir" onclick="filterFiles('dir',this)"><span class="filter-icon">📁</span> 文件夹</button>
+                    <button class="filter-btn" data-filter="file" onclick="filterFiles('file',this)"><span class="filter-icon">📄</span> 文件</button>
+                </div>
+            </div>
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="searchInput" placeholder="搜索文件名..." oninput="searchFiles(this.value)">
+            </div>
+        </div>
+    </div>
+
+    <!-- File List -->
+    <main class="file-section">
+        <div class="container">
+            <div class="file-table-wrap">
+                <table class="file-table" id="fileTable">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-column="name" data-type="string" onclick="sortTable('name')">文件名</th>
+                            <th class="sortable" data-column="size" data-type="size" onclick="sortTable('size')">大小</th>
+                            <th class="sortable" data-column="date" data-type="date" onclick="sortTable('date')">修改日期</th>
+                            <th style="width:80px">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fileList">
+                        {{file_list}}
+                    </tbody>
+                </table>
+                <div class="no-results" id="noResults" style="display:none">
+                    <div class="nr-icon">🔍</div>
+                    <p>没有找到匹配的文件</p>
+                </div>
+                <div class="stats-bar">
+                    <span id="statsInfo">{{stats_info}}</span>
+                    <span id="statsCount"></span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <div class="footer-inner">
+                <span class="footer-copy">{{footer_copyright}}</span>
+                <div class="footer-links">
+                    {{footer_links}}
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+    (function(){
+        let currentSort = { column: 'name', direction: 'asc' };
+        let currentFilter = 'all';
+        let searchTerm = '';
+
+        window.sortTable = function(column) {
+            const table = document.getElementById('fileTable');
+            const tbody = table.querySelector('tbody');
+            const headers = table.querySelectorAll('.sortable');
+            let direction = 'asc';
+            if (currentSort.column === column && currentSort.direction === 'asc') {
+                direction = 'desc';
+            }
+            currentSort = { column, direction };
+            headers.forEach(h => h.classList.remove('asc','desc'));
+            const th = table.querySelector('th[data-column="'+column+'"]');
+            if (th) th.classList.add(direction);
+
+            const rows = Array.from(tbody.querySelectorAll('tr[data-type]'));
+            rows.sort((a, b) => {
+                if (a.dataset.type === 'parent') return -1;
+                if (b.dataset.type === 'parent') return 1;
+                let aVal, bVal;
+                if (column === 'name') {
+                    aVal = a.dataset.name || '';
+                    bVal = b.dataset.name || '';
+                    const r = aVal.localeCompare(bVal, undefined, {numeric:true, sensitivity:'base'});
+                    return direction === 'asc' ? r : -r;
+                } else if (column === 'size') {
+                    aVal = parseFloat(a.dataset.size) || 0;
+                    bVal = parseFloat(b.dataset.size) || 0;
+                    return direction === 'asc' ? aVal - bVal : bVal - aVal;
+                } else if (column === 'date') {
+                    aVal = a.dataset.date || '';
+                    bVal = b.dataset.date || '';
+                    return direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                }
+                return 0;
+            });
+            rows.forEach(row => tbody.appendChild(row));
+        };
+
+        window.filterFiles = function(type, btn) {
+            currentFilter = type;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            applyFilters();
+        };
+
+        window.searchFiles = function(term) {
+            searchTerm = term.toLowerCase().trim();
+            applyFilters();
+        };
+
+        function applyFilters() {
+            const rows = document.querySelectorAll('#fileList tr[data-type]');
+            let visible = 0;
+            rows.forEach(row => {
+                if (row.dataset.type === 'parent') { row.style.display = ''; visible++; return; }
+                let show = true;
+                if (currentFilter !== 'all') {
+                    if (currentFilter === 'dir' && row.dataset.type !== 'dir') show = false;
+                    if (currentFilter === 'file' && row.dataset.type !== 'file') show = false;
+                }
+                if (searchTerm && row.dataset.name) {
+                    if (!row.dataset.name.toLowerCase().includes(searchTerm)) show = false;
+                }
+                row.style.display = show ? '' : 'none';
+                if (show) visible++;
+            });
+            document.getElementById('noResults').style.display = visible === 0 ? '' : 'none';
+            document.getElementById('statsCount').textContent = visible > 0 ? '显示 ' + visible + ' 项' : '';
+        }
+
+        sortTable('name');
+    })();
+    </script>
+</body>
+</html>
