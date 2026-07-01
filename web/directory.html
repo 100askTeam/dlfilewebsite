@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="{{.Site.Language}}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.PageTitle}}</title>
+    <style>
+        :root { --primary:#2563eb; --success:#16a34a; --gray:#6b7280; --border:#e5e7eb; --bg:#f8fafc; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Arial, sans-serif; background: var(--bg); color: #111827; }
+        .nav { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; padding: 0 18px; position: sticky; top: 0; z-index: 20; }
+        .nav-inner { max-width: 1240px; margin: 0 auto; min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+        .brand { color: #fff; text-decoration: none; font-weight: 700; font-size: 18px; padding: 14px 0; }
+        .nav-links { display: flex; gap: 10px; flex-wrap: wrap; }
+        .nav-links a { color: rgba(255,255,255,.92); text-decoration: none; font-size: 14px; }
+        .nav-links a:hover { text-decoration: underline; }
+        .container { max-width: 1240px; margin: 0 auto; padding: 0 18px; }
+        .breadcrumb { background: #fff; border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 13px; }
+        .breadcrumb a { color: var(--primary); text-decoration: none; }
+        .breadcrumb span { color: #94a3b8; margin: 0 6px; }
+        .hero { padding: 18px 0; }
+        .hero-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+        .hero-card h1 { margin: 0 0 8px; font-size: 24px; }
+        .hero-card p { margin: 0; color: var(--gray); }
+        .hero-card .meta { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .badge { background: #eff6ff; color: #1d4ed8; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+        .toolbar { display: flex; gap: 12px; justify-content: space-between; align-items: center; flex-wrap: wrap; margin: 16px 0; }
+        .toolbar input { width: 320px; max-width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; }
+        .table-wrap { background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: auto; box-shadow: 0 3px 10px rgba(0,0,0,.03); }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 14px; border-bottom: 1px solid var(--border); text-align: left; font-size: 14px; }
+        th { background: #f8fafc; color: #475569; cursor: pointer; }
+        tr:hover { background: #f8fbff; }
+        .name-cell { display: flex; align-items: center; gap: 10px; }
+        .icon { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: #f1f5f9; }
+        .dir .icon { background: #fef3c7; }
+        .name-cell a { text-decoration: none; color: #111827; font-weight: 600; }
+        .name-cell a:hover { color: var(--primary); }
+        .dl { display: inline-block; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--primary); color: var(--primary); text-decoration: none; font-size: 12px; font-weight: 700; }
+        .dl:hover { background: var(--primary); color: #fff; }
+        .readme { background: #fffdf5; border: 1px solid #fde68a; border-radius: 12px; padding: 16px; margin: 16px 0; }
+        .readme h2 { margin-top: 0; font-size: 18px; color: #92400e; }
+        .readme pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: Consolas, monospace; font-size: 13px; color: #374151; }
+        .footer { margin-top: 24px; background: #111827; color: #cbd5e1; padding: 24px 0; }
+        .footer-inner { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .footer a { color: #cbd5e1; text-decoration: none; margin-left: 12px; }
+        .footer a:hover { color: #fff; }
+        .hidden { display: none; }
+        @media (max-width: 768px) {
+            .toolbar { align-items: stretch; }
+            .toolbar input { width: 100%; }
+            th, td { padding: 10px 8px; font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="nav">
+        <div class="nav-inner">
+            <a class="brand" href="/">{{.Site.LogoText}}</a>
+            <div class="nav-links">
+                {{range .HeaderLinks}}<a href="{{.Href}}">{{.Text}}</a>{{end}}
+                <a href="/admin">后台管理</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="breadcrumb">
+        <div class="container">
+            <a href="/">首页</a>
+            {{range .Breadcrumbs}}<span>/</span>{{if .Current}}<strong>{{.Text}}</strong>{{else}}<a href="{{.Href}}">{{.Text}}</a>{{end}}{{end}}
+        </div>
+    </div>
+
+    <div class="container">
+        <section class="hero">
+            <div class="hero-card">
+                <h1>{{.PageHeading}}</h1>
+                <p>{{.IntroText}}</p>
+                <div class="meta">
+                    <span class="badge">目录：{{.DirDisplay}}</span>
+                    <span class="badge">共 {{len .Entries}} 项</span>
+                    <span class="badge">动态 Go 服务</span>
+                </div>
+            </div>
+        </section>
+
+        {{if .Readme}}
+        <section class="readme">
+            <h2>README</h2>
+            <pre>{{.Readme}}</pre>
+        </section>
+        {{end}}
+
+        <div class="toolbar">
+            <div class="badge">支持搜索和排序</div>
+            <input id="searchInput" type="text" placeholder="搜索文件名..." oninput="filterRows(this.value)">
+        </div>
+
+        <div class="table-wrap">
+            <table id="entryTable">
+                <thead>
+                    <tr>
+                        <th onclick="sortRows('name')">文件名</th>
+                        <th onclick="sortRows('size')">大小</th>
+                        <th onclick="sortRows('time')">修改时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="entryBody">
+                    {{range .Entries}}
+                    <tr class="{{.Type}}" data-name="{{.NameLower}}" data-size="{{.SortSize}}" data-time="{{.SortTime}}">
+                        <td>
+                            <div class="name-cell">
+                                <span class="icon">{{.Icon}}</span>
+                                <a href="{{.Href}}">{{.Name}}</a>
+                            </div>
+                        </td>
+                        <td>{{.SizeDisplay}}</td>
+                        <td>{{.ModifiedDisplay}}</td>
+                        <td>{{if eq .Type "file"}}<a class="dl" href="{{.Href}}">下载</a>{{else}}<a class="dl" href="{{.Href}}">打开</a>{{end}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="container footer-inner">
+            <div>{{.FooterCopyright}}</div>
+            <div>{{range .FooterLinks}}<a href="{{.Href}}">{{.Text}}</a>{{end}}</div>
+        </div>
+    </footer>
+
+    <script>
+    let currentSort = { key: 'name', direction: 'asc' };
+
+    function filterRows(keyword) {
+        const term = String(keyword || '').toLowerCase().trim();
+        document.querySelectorAll('#entryBody tr').forEach(row => {
+            const show = !term || (row.dataset.name || '').includes(term);
+            row.classList.toggle('hidden', !show);
+        });
+    }
+
+    function sortRows(key) {
+        const tbody = document.getElementById('entryBody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        let direction = 'asc';
+        if (currentSort.key === key && currentSort.direction === 'asc') direction = 'desc';
+        currentSort = { key, direction };
+
+        rows.sort((a, b) => {
+            const av = a.dataset[key] || '';
+            const bv = b.dataset[key] || '';
+            if (key === 'size' || key === 'time') {
+                const na = Number(av) || 0;
+                const nb = Number(bv) || 0;
+                return direction === 'asc' ? na - nb : nb - na;
+            }
+            return direction === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+        });
+        rows.forEach(row => tbody.appendChild(row));
+    }
+    </script>
+</body>
+</html>

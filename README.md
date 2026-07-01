@@ -9,15 +9,39 @@
 - 新建目录、删除文件和删除目录
 - 上传后自动刷新目录展示
 - 访问统计
-- `Nginx + Gunicorn + systemd` 部署方案
+- `Nginx + Gunicorn + systemd` 的 Python 部署方案
+- `Go + systemd + Nginx` 的单二进制部署方案
 - 宝塔面板部署方案
 
 这个仓库只保存代码和部署文件，不包含实际资源文件。
+
+## 当前推荐
+
+当前更推荐直接使用 Go 版：
+
+- 单文件运行
+- 不依赖 Python / Flask / Gunicorn
+- 支持后台登录、上传、遍历、新建目录、删除、配置编辑、访问统计
+- 可使用 `CGO_ENABLED=0` 生成 Linux 静态二进制
+
+Go 版入口文件：
+
+- `main.go`
+- `go.mod`
+- `web/`
 
 ## 仓库内容
 
 ```text
 .
+├── go.mod
+├── main.go
+├── web/
+│   ├── login.html
+│   ├── admin.html
+│   └── directory.html
+├── GO部署说明.md
+├── dladmin-go.service
 ├── admin_server.py
 ├── generate_directory.py
 ├── directory-template.html
@@ -80,7 +104,34 @@
 
 ## 快速开始
 
-### Linux
+### Go 版编译 Linux 单文件
+
+```bash
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dladmin-go .
+```
+
+### Linux 直接运行 Go 版
+
+```bash
+chmod +x dladmin-go
+./dladmin-go
+```
+
+默认监听：
+
+```text
+0.0.0.0:5000
+```
+
+可用环境变量覆盖：
+
+```bash
+HOST=127.0.0.1 PORT=5000 ./dladmin-go
+```
+
+### Python 版
+
+#### Linux
 
 ```bash
 cd /home1/dlfile
@@ -91,7 +142,7 @@ python3 generate_directory.py . -r
 python3 admin_server.py
 ```
 
-### Windows
+#### Windows
 
 ```bat
 start.bat
@@ -101,13 +152,15 @@ start.bat
 
 生产环境推荐使用：
 
-- `Gunicorn`
+- Go 版：`dladmin-go + systemd + Nginx`
+- Python 版：`Gunicorn + systemd + Nginx`
 - `systemd`
 - `Nginx`
 
 详细说明见：
 
 - [DEPLOYMENT.md](./DEPLOYMENT.md)
+- [GO部署说明.md](./GO%E9%83%A8%E7%BD%B2%E8%AF%B4%E6%98%8E.md)
 - [最终上线配置说明](./deploy/%E6%9C%80%E7%BB%88%E4%B8%8A%E7%BA%BF%E9%85%8D%E7%BD%AE%E8%AF%B4%E6%98%8E.md)
 - [宝塔 Nginx 面板部署说明](./deploy/%E5%AE%9D%E5%A1%94Nginx%E9%9D%A2%E6%9D%BF%E9%83%A8%E7%BD%B2%E8%AF%B4%E6%98%8E.md)
 
@@ -119,7 +172,13 @@ start.bat
 bash scripts/rebuild.sh
 ```
 
-### 查看服务状态
+### 查看 Go 服务状态
+
+```bash
+systemctl status dladmin-go
+```
+
+### 查看 Python 服务状态
 
 ```bash
 systemctl status dl-download-site
@@ -128,6 +187,7 @@ systemctl status dl-download-site
 ### 查看服务日志
 
 ```bash
+journalctl -u dladmin-go -f
 journalctl -u dl-download-site -f
 ```
 

@@ -5,6 +5,7 @@ __pycache__/
 *.pyd
 .venv/
 venv/
+dladmin-go
 
 # Runtime files
 admin_auth.json

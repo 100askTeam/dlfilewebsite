@@ -8,6 +8,33 @@
 - 服务器目录：`/home1/dlfile`
 - 后台监听：`127.0.0.1:5000`
 
+## 0. 推荐方案
+
+当前推荐优先使用 Go 版：
+
+- 单文件运行
+- 不依赖 Python 运行时
+- 不依赖 Flask / Gunicorn
+- 支持后台登录、目录遍历、上传、新建目录、删除、配置编辑、访问统计
+
+Go 版相关文件：
+
+- `main.go`
+- `go.mod`
+- `web/`
+- `GO部署说明.md`
+- `dladmin-go.service`
+
+编译命令：
+
+```bash
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dladmin-go .
+```
+
+Go 版专用说明：
+
+- [GO部署说明.md](./GO%E9%83%A8%E7%BD%B2%E8%AF%B4%E6%98%8E.md)
+
 ## 1. 上传代码
 
 把本仓库代码上传到服务器目录，例如：
@@ -26,6 +53,10 @@
 
 ```text
 /home1/dlfile/
+├── dladmin-go
+├── go.mod
+├── main.go
+├── web/
 ├── admin_server.py
 ├── generate_directory.py
 ├── directory-template.html
@@ -42,7 +73,34 @@
 └── admin_auth.json
 ```
 
-## 2. 临时启动方式
+## 2. Go 版启动方式
+
+### 编译
+
+```bash
+cd /home1/dlfile
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dladmin-go .
+```
+
+### 直接运行
+
+```bash
+cd /home1/dlfile
+chmod +x dladmin-go
+./dladmin-go
+```
+
+### systemd 常驻
+
+```bash
+cp /home1/dlfile/dladmin-go.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable dladmin-go
+systemctl restart dladmin-go
+systemctl status dladmin-go
+```
+
+## 3. Python 版临时启动方式
 
 只用于调试：
 
@@ -55,7 +113,7 @@ python3 generate_directory.py . -r
 python3 admin_server.py
 ```
 
-## 3. 生产环境推荐方式
+## 4. Python 版生产环境方式
 
 生产环境不要长期直接运行：
 
@@ -146,7 +204,7 @@ systemctl status dl-download-site
 journalctl -u dl-download-site -f
 ```
 
-## 4. Nginx 配置
+## 5. Nginx 配置
 
 Nginx 需要反代到：
 
@@ -178,7 +236,7 @@ location / {
 - `deploy/nginx/dl-download-site.conf`
 - `deploy/nginx/dl.100ask.net.baota.conf`
 
-## 5. 宝塔说明
+## 6. 宝塔说明
 
 如果你使用宝塔：
 
@@ -196,7 +254,7 @@ location / {
 
 - [宝塔Nginx面板部署说明](./deploy/%E5%AE%9D%E5%A1%94Nginx%E9%9D%A2%E6%9D%BF%E9%83%A8%E7%BD%B2%E8%AF%B4%E6%98%8E.md)
 
-## 6. 上线后检查
+## 7. 上线后检查
 
 建议逐项确认：
 
@@ -205,5 +263,5 @@ location / {
 3. 后台“文件管理”可以进入目录
 4. 上传文件后前台会自动显示
 5. 删除文件或目录后前台会同步刷新
-6. `systemctl status dl-download-site` 正常
+6. `systemctl status dladmin-go` 或 `systemctl status dl-download-site` 正常
 7. `nginx -t` 正常

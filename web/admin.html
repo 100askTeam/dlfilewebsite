@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>dladmin-go 管理后台</title>
+    <style>
+        :root { --primary:#2563eb; --success:#16a34a; --danger:#dc2626; --gray:#6b7280; --border:#e5e7eb; --bg:#f8fafc; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Arial, sans-serif; background: var(--bg); color: #111827; }
+        .header { background: #111827; color: #fff; padding: 16px 20px; display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .header h1 { margin: 0; font-size: 22px; }
+        .header .actions { display: flex; gap: 10px; align-items: center; }
+        .header a { color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,.2); padding: 8px 12px; border-radius: 8px; }
+        .container { max-width: 1240px; margin: 0 auto; padding: 20px; }
+        .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+        .tab-btn { border: 1px solid var(--border); background: #fff; padding: 10px 14px; border-radius: 8px; cursor: pointer; font-weight: 700; }
+        .tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+        .card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 3px 10px rgba(0,0,0,.03); }
+        .card h2 { margin: 0 0 12px; font-size: 18px; }
+        .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+        .chip { background: #eff6ff; color: #1d4ed8; padding: 8px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+        .btn { border: 0; border-radius: 8px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
+        .btn.primary { background: var(--primary); color: #fff; }
+        .btn.success { background: var(--success); color: #fff; }
+        .btn.danger { background: var(--danger); color: #fff; }
+        .btn.light { background: #fff; color: #111827; border: 1px solid var(--border); }
+        .btn.small { padding: 6px 10px; font-size: 12px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); gap: 16px; }
+        label { display: block; margin-bottom: 6px; font-size: 13px; color: #374151; font-weight: 700; }
+        input, select, textarea { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #d1d5db; font-size: 14px; }
+        textarea { min-height: 320px; resize: vertical; font-family: Consolas, monospace; }
+        .muted { color: var(--gray); font-size: 13px; }
+        .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+        table { width: 100%; border-collapse: collapse; background: #fff; }
+        th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; font-size: 13px; vertical-align: top; }
+        th { background: #f9fafb; color: #374151; }
+        .drop-zone { border: 2px dashed #cbd5e1; border-radius: 10px; padding: 20px; text-align: center; background: #f8fafc; cursor: pointer; }
+        .drop-zone.dragover { border-color: var(--primary); background: #eff6ff; }
+        .progress { display: none; margin-top: 12px; }
+        .progress .bar-wrap { background: #e5e7eb; border-radius: 999px; height: 10px; overflow: hidden; }
+        .progress .bar { height: 10px; width: 0; background: var(--primary); }
+        .progress .text { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; color: var(--gray); }
+        .toast { position: fixed; right: 20px; bottom: 20px; padding: 12px 14px; border-radius: 10px; color: #fff; display: none; z-index: 999; }
+        .toast.success { background: var(--success); }
+        .toast.error { background: var(--danger); }
+        pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>dladmin-go 管理后台</h1>
+        <div class="actions">
+            <span>当前用户：{{.Username}}</span>
+            <a href="/" target="_blank">打开前台</a>
+            <a href="/logout">退出登录</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('files', event)">文件管理</button>
+            <button class="tab-btn" onclick="switchTab('config', event)">配置管理</button>
+            <button class="tab-btn" onclick="switchTab('stats', event)">访问统计</button>
+            <button class="tab-btn" onclick="switchTab('account', event)">账号管理</button>
+        </div>
+
+        <div id="tab-files" class="tab-panel active">
+            <div class="card">
+                <h2>目录浏览</h2>
+                <div class="toolbar">
+                    <div class="chip" id="currentPathLabel">当前目录：/</div>
+                    <button class="btn primary" onclick="loadFiles(browserState.path)">刷新目录</button>
+                    <button class="btn success" onclick="openParent()">返回上级</button>
+                    <a class="btn light" id="openSiteDir" href="/" target="_blank" style="text-decoration:none;">打开前台目录</a>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width:36%">名称</th>
+                                <th style="width:12%">类型</th>
+                                <th style="width:14%">大小</th>
+                                <th style="width:22%">修改时间</th>
+                                <th style="width:16%">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fileBody">
+                            <tr><td colspan="5">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="muted" id="browserSummary">用于遍历站点目录并选择上传目标位置。</p>
+            </div>
+
+            <div class="grid">
+                <div class="card">
+                    <h2>新建目录</h2>
+                    <label>当前父目录</label>
+                    <input id="mkdirParent" readonly value="/">
+                    <label style="margin-top:12px;">目录名称</label>
+                    <input id="mkdirName" placeholder="例如 Images、Tools、2026-07">
+                    <button class="btn primary" style="margin-top:14px;" onclick="createDirectory()">新建目录</button>
+                </div>
+                <div class="card">
+                    <h2>上传文件</h2>
+                    <label>上传目标目录</label>
+                    <input id="uploadTarget" readonly value="/">
+                    <label style="margin-top:12px;">选择文件</label>
+                    <div class="drop-zone" id="dropZone" onclick="document.getElementById('uploadFiles').click()">
+                        <strong>拖拽文件到这里上传</strong><br>
+                        <span class="muted">也可以点击这里选择多个文件</span>
+                    </div>
+                    <input id="uploadFiles" type="file" multiple style="display:none" onchange="setSelectedFiles(this.files)">
+                    <p class="muted" id="selectedHint">未选择文件</p>
+                    <label>覆盖同名文件</label>
+                    <select id="overwriteSelect">
+                        <option value="false">否，跳过同名文件</option>
+                        <option value="true">是，直接覆盖</option>
+                    </select>
+                    <button class="btn success" style="margin-top:14px;" onclick="uploadFiles()">上传文件</button>
+                    <div class="progress" id="uploadProgress">
+                        <div class="text"><span id="progressLabel">准备上传...</span><span id="progressPercent">0%</span></div>
+                        <div class="bar-wrap"><div class="bar" id="progressBar"></div></div>
+                    </div>
+                    <pre id="uploadResult" class="muted" style="margin-top:12px;"></pre>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-config" class="tab-panel">
+            <div class="card">
+                <h2>配置文件</h2>
+                <p class="muted">这里直接编辑 `config.json` 的 JSON 内容，保存后立即生效。</p>
+                <textarea id="configEditor"></textarea>
+                <div class="toolbar" style="margin-top:12px;">
+                    <button class="btn primary" onclick="saveConfig()">保存配置</button>
+                    <button class="btn light" onclick="loadConfig()">重新加载</button>
+                    <button class="btn success" onclick="generatePages()">重新生成</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-stats" class="tab-panel">
+            <div class="card">
+                <h2>访问统计</h2>
+                <div class="toolbar">
+                    <button class="btn primary" onclick="loadStats()">刷新统计</button>
+                </div>
+                <pre id="statsView">加载中...</pre>
+            </div>
+        </div>
+
+        <div id="tab-account" class="tab-panel">
+            <div class="card">
+                <h2>修改密码</h2>
+                <div class="grid">
+                    <div>
+                        <label>当前密码</label>
+                        <input id="currentPassword" type="password">
+                    </div>
+                    <div>
+                        <label>新密码</label>
+                        <input id="newPassword" type="password">
+                    </div>
+                </div>
+                <label style="margin-top:12px;">确认新密码</label>
+                <input id="confirmPassword" type="password">
+                <button class="btn primary" style="margin-top:14px;" onclick="changePassword()">修改密码</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+    let browserState = { path: '', parentPath: '' };
+    let selectedFiles = [];
+
+    function switchTab(name, evt) {
+        document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.getElementById('tab-' + name).classList.add('active');
+        if (evt && evt.currentTarget) evt.currentTarget.classList.add('active');
+        if (name === 'stats') loadStats();
+        if (name === 'config') loadConfig();
+    }
+
+    function showToast(msg, type) {
+        const toast = document.getElementById('toast');
+        toast.textContent = msg;
+        toast.className = 'toast ' + type;
+        toast.style.display = 'block';
+        setTimeout(() => toast.style.display = 'none', 3000);
+    }
+
+    function escapeHtml(text) {
+        return String(text || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function encodeDataValue(value) {
+        return encodeURIComponent(String(value || ''));
+    }
+
+    function decodeDataValue(value) {
+        return decodeURIComponent(String(value || ''));
+    }
+
+    function setSelectedFiles(files) {
+        selectedFiles = Array.from(files || []);
+        document.getElementById('selectedHint').textContent = selectedFiles.length
+            ? `已选择 ${selectedFiles.length} 个文件：${selectedFiles.map(file => file.name).join('，')}`
+            : '未选择文件';
+    }
+
+    function setProgress(visible, percent = 0, label = '准备上传...') {
+        const wrap = document.getElementById('uploadProgress');
+        wrap.style.display = visible ? 'block' : 'none';
+        document.getElementById('progressBar').style.width = percent + '%';
+        document.getElementById('progressPercent').textContent = percent + '%';
+        document.getElementById('progressLabel').textContent = label;
+    }
+
+    function toSiteHref(relativePath, isDir) {
+        if (!relativePath) return '/';
+        let href = '/' + String(relativePath).split('/').map(encodeURIComponent).join('/');
+        if (isDir) href += '/';
+        return href;
+    }
+
+    async function loadFiles(path = '') {
+        const resp = await fetch(`/api/files?path=${encodeURIComponent(path || '')}`);
+        if (resp.status === 401) { location.href = '/login'; return; }
+        const result = await resp.json();
+        if (!resp.ok || result.success === false) {
+            showToast(result.error || '目录加载失败', 'error');
+            return;
+        }
+        browserState.path = result.current_path || '';
+        browserState.parentPath = result.parent_path || '';
+        document.getElementById('currentPathLabel').textContent = `当前目录：${result.current_label}`;
+        document.getElementById('mkdirParent').value = result.current_label;
+        document.getElementById('uploadTarget').value = result.current_label;
+        document.getElementById('browserSummary').textContent = `当前目录共 ${result.entry_count} 项。Go 版本为动态展示，无需额外生成静态页。`;
+        document.getElementById('openSiteDir').href = toSiteHref(result.current_path, true);
+
+        const body = document.getElementById('fileBody');
+        if (!result.entries || result.entries.length === 0) {
+            body.innerHTML = '<tr><td colspan="5">当前目录为空</td></tr>';
+            return;
+        }
+        body.innerHTML = result.entries.map(entry => {
+            const typeLabel = entry.type === 'dir' ? '目录' : '文件';
+            const encodedPath = encodeDataValue(entry.relative_path || '');
+            const encodedType = encodeDataValue(typeLabel);
+            const encodedName = encodeDataValue(entry.name || '');
+            const href = toSiteHref(entry.relative_path || '', entry.type === 'dir');
+            const openLink = entry.type === 'dir'
+                ? `<button type="button" class="btn light small" data-action="open" data-path="${encodedPath}">进入</button>`
+                : `<a class="btn light small" href="${href}" target="_blank" style="text-decoration:none;">打开</a>`;
+            const nameBlock = entry.type === 'dir'
+                ? `<button type="button" class="btn light small" data-action="open" data-path="${encodedPath}">📁 ${escapeHtml(entry.name)}</button>`
+                : `<a href="${href}" target="_blank">📄 ${escapeHtml(entry.name)}</a>`;
+            return `
+                <tr>
+                    <td>${nameBlock}</td>
+                    <td>${typeLabel}</td>
+                    <td>${entry.type === 'dir' ? '-' : escapeHtml(entry.size_display || '-')}</td>
+                    <td>${escapeHtml(entry.modified_at || '')}</td>
+                    <td>
+                        ${openLink}
+                        <button type="button" class="btn danger small" data-action="delete" data-path="${encodedPath}" data-type="${encodedType}" data-name="${encodedName}">
+                            ${entry.type === 'dir' ? '删除目录' : '删除文件'}
+                        </button>
+                    </td>
+                </tr>`;
+        }).join('');
+    }
+
+    function openParent() {
+        loadFiles(browserState.parentPath || '');
+    }
+
+    async function createDirectory() {
+        const name = document.getElementById('mkdirName').value.trim();
+        if (!name) { showToast('请输入目录名称', 'error'); return; }
+        const resp = await fetch('/api/mkdir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ parent_path: browserState.path || '', name })
+        });
+        const result = await resp.json();
+        if (!resp.ok || result.success === false) {
+            showToast(result.error || '新建目录失败', 'error');
+            return;
+        }
+        document.getElementById('mkdirName').value = '';
+        showToast(result.message || '目录创建成功', 'success');
+        loadFiles(browserState.path);
+    }
+
+    async function deleteEntry(relativePath, typeLabel, name) {
+        if (!confirm(`确认删除${typeLabel}“${name}”吗？此操作不可恢复。`)) return;
+        const resp = await fetch('/api/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: relativePath })
+        });
+        const result = await resp.json();
+        if (!resp.ok || result.success === false) {
+            showToast(result.error || '删除失败', 'error');
+            return;
+        }
+        showToast(result.message || '删除成功', 'success');
+        loadFiles(browserState.path);
+    }
+
+    async function uploadFiles() {
+        if (!selectedFiles.length) { showToast('请先选择要上传的文件', 'error'); return; }
+        document.getElementById('uploadResult').textContent = '';
+        setProgress(true, 0, '准备上传...');
+        const formData = new FormData();
+        formData.append('target_path', browserState.path || '');
+        formData.append('overwrite', document.getElementById('overwriteSelect').value);
+        selectedFiles.forEach(file => formData.append('files', file));
+
+        const result = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/upload');
+            xhr.responseType = 'json';
+            xhr.upload.onprogress = (event) => {
+                if (!event.lengthComputable) return;
+                const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+                setProgress(true, percent, `正在上传 ${selectedFiles.length} 个文件...`);
+            };
+            xhr.onload = () => {
+                if (xhr.status === 401) { location.href = '/login'; return; }
+                const data = xhr.response || JSON.parse(xhr.responseText || '{}');
+                if (xhr.status >= 200 && xhr.status < 300 && data.success !== false) resolve(data);
+                else reject(new Error(data.error || '上传失败'));
+            };
+            xhr.onerror = () => reject(new Error('网络错误，上传失败'));
+            xhr.send(formData);
+        }).catch(error => {
+            setProgress(false);
+            showToast(error.message || '上传失败', 'error');
+            throw error;
+        });
+
+        setProgress(true, 100, '上传完成');
+        document.getElementById('uploadResult').textContent = [
+            `已上传 ${result.saved.length} 个文件`,
+            result.skipped && result.skipped.length ? `跳过：${result.skipped.join('，')}` : ''
+        ].filter(Boolean).join('\n');
+        document.getElementById('uploadFiles').value = '';
+        selectedFiles = [];
+        document.getElementById('selectedHint').textContent = '未选择文件';
+        showToast(result.message || '上传完成', 'success');
+        loadFiles(browserState.path);
+    }
+
+    async function loadConfig() {
+        const resp = await fetch('/api/config');
+        if (resp.status === 401) { location.href = '/login'; return; }
+        const result = await resp.json();
+        document.getElementById('configEditor').value = JSON.stringify(result, null, 2);
+    }
+
+    async function saveConfig() {
+        let payload;
+        try {
+            payload = JSON.parse(document.getElementById('configEditor').value);
+        } catch (error) {
+            showToast('JSON 格式错误', 'error');
+            return;
+        }
+        const resp = await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await resp.json().catch(() => ({}));
+        if (!resp.ok || result.success === false) {
+            showToast(result.error || '保存失败', 'error');
+            return;
+        }
+        showToast('配置已保存', 'success');
+        loadConfig();
+    }
+
+    async function loadStats() {
+        const resp = await fetch('/api/stats');
+        if (resp.status === 401) { location.href = '/login'; return; }
+        const result = await resp.json();
+        document.getElementById('statsView').textContent = JSON.stringify(result, null, 2);
+    }
+
+    async function generatePages() {
+        const resp = await fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ recursive: true })
+        });
+        const result = await resp.json();
+        if (!resp.ok || result.success === false) {
+            showToast(result.error || '操作失败', 'error');
+            return;
+        }
+        showToast(result.message || '已完成', 'success');
+    }
+
+    async function changePassword() {
+        const currentPassword = document.getElementById('currentPassword').value;
+        const newPassword = document.getElementById('newPassword').value;
+        const confirmPassword = document.getElementById('confirmPassword').value;
+        if (!currentPassword || !newPassword || !confirmPassword) { showToast('请填写完整', 'error'); return; }
+        if (newPassword.length < 6) { showToast('新密码至少 6 位', 'error'); return; }
+        if (newPassword !== confirmPassword) { showToast('两次密码不一致', 'error'); return; }
+        const resp = await fetch('/api/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+        });
+        const result = await resp.json();
+        if (!resp.ok || result.success === false) {
+            showToast(result.error || '修改失败', 'error');
+            return;
+        }
+        showToast(result.message || '密码已修改，请重新登录', 'success');
+        setTimeout(() => location.href = '/logout', 1200);
+    }
+
+    document.getElementById('fileBody').addEventListener('click', (event) => {
+        const target = event.target.closest('[data-action]');
+        if (!target) return;
+        const action = target.dataset.action;
+        if (action === 'open') {
+            loadFiles(decodeDataValue(target.dataset.path));
+            return;
+        }
+        if (action === 'delete') {
+            deleteEntry(
+                decodeDataValue(target.dataset.path),
+                decodeDataValue(target.dataset.type),
+                decodeDataValue(target.dataset.name)
+            );
+        }
+    });
+
+    const dropZone = document.getElementById('dropZone');
+    ['dragenter', 'dragover'].forEach(name => {
+        dropZone.addEventListener(name, event => {
+            event.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+        dropZone.addEventListener(name, event => {
+            event.preventDefault();
+            dropZone.classList.remove('dragover');
+        });
+    });
+    dropZone.addEventListener('drop', event => {
+        setSelectedFiles(event.dataTransfer && event.dataTransfer.files ? event.dataTransfer.files : []);
+    });
+
+    loadFiles('');
+    loadConfig();
+    loadStats();
+    </script>
+</body>
+</html>
