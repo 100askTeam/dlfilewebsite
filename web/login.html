@@ -21,16 +21,16 @@
 </head>
 <body>
     <div class="wrap">
-        <form class="card" method="post" action="/login">
+        <form class="card" method="post" action="/login" enctype="application/x-www-form-urlencoded" accept-charset="UTF-8">
             <h1>dladmin-go</h1>
-            <p>纯 Go 单文件后台，登录后可上传、遍历和管理目录。</p>
+            <p>百问下载与发布管理中心</p>
             <label for="username">用户名</label>
             <input id="username" name="username" type="text" autocomplete="username" required>
             <label for="password">密码</label>
             <input id="password" name="password" type="password" autocomplete="current-password" required>
             <button type="submit">登录后台</button>
             {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
-            <div class="hint">默认账号：admin / admin123</div>
+            <div class="hint">管理员账号由部署环境显式初始化，系统不提供默认密码。</div>
         </form>
     </div>
 </body>

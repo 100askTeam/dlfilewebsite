@@ -53,17 +53,19 @@
     <div class="header">
         <h1>dladmin-go 管理后台</h1>
         <div class="actions">
-            <span>当前用户：{{.Username}}</span>
+            <span>当前用户：{{.Username}}（{{.Role}}）</span>
             <a href="/" target="_blank">打开前台</a>
-            <a href="/logout">退出登录</a>
+            <button class="btn light small" type="button" onclick="logout()">退出登录</button>
         </div>
     </div>
 
     <div class="container">
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('files', event)">文件管理</button>
+            <button class="tab-btn" onclick="switchTab('releases', event)">版本发布</button>
             <button class="tab-btn" onclick="switchTab('config', event)">配置管理</button>
             <button class="tab-btn" onclick="switchTab('stats', event)">访问统计</button>
+            <button class="tab-btn" onclick="switchTab('audit', event)">操作审计</button>
             <button class="tab-btn" onclick="switchTab('account', event)">账号管理</button>
         </div>
 
@@ -130,6 +132,37 @@
             </div>
         </div>
 
+        <div id="tab-releases" class="tab-panel">
+            <div class="grid">
+                <div class="card">
+                    <h2>上传签名发布集</h2>
+                    <p class="muted">同时选择 <code>release-set.json</code> 与清单中列出的全部安装包/增量包。上传后只进入暂存区，验签失败不会公开。</p>
+                    <input id="releaseFiles" type="file" multiple>
+                    <button class="btn success" style="margin-top:14px;" onclick="uploadReleaseSet()">校验并暂存</button>
+                    <pre id="releaseUploadResult" class="muted" style="margin-top:12px;"></pre>
+                </div>
+                <div class="card">
+                    <h2>自动化导入说明</h2>
+                    <p class="muted">CI/SCP 先上传到私有 incoming 目录，再由服务器上的 <code>dlctl import</code> 执行同一套验签。签名私钥不放在下载服务器。</p>
+                    <pre>dlctl verify ./dist/release-set
+dlctl import ci-job-id
+dlctl publish RELEASE_ID</pre>
+                </div>
+            </div>
+            <div class="card">
+                <h2>发布记录</h2>
+                <div class="toolbar">
+                    <button class="btn primary" onclick="loadReleases()">刷新记录</button>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>ID</th><th>产品/通道</th><th>版本</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead>
+                        <tbody id="releaseBody"><tr><td colspan="6">打开页签后加载...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <div id="tab-config" class="tab-panel">
             <div class="card">
                 <h2>配置文件</h2>
@@ -171,11 +204,44 @@
                 <button class="btn primary" style="margin-top:14px;" onclick="changePassword()">修改密码</button>
             </div>
         </div>
+
+        <div id="tab-audit" class="tab-panel">
+            <div class="card">
+                <h2>操作审计</h2>
+                <div class="toolbar">
+                    <button class="btn primary" onclick="loadAudit()">刷新审计</button>
+                </div>
+                <pre id="auditView">打开页签后加载...</pre>
+            </div>
+        </div>
     </div>
 
     <div id="toast" class="toast"></div>
 
     <script>
+    let csrfToken = {{printf "%q" .CSRFToken}};
+    const originalFetch = window.fetch.bind(window);
+    async function refreshCsrfToken() {
+        const response = await originalFetch('/api/session', { cache: 'no-store' });
+        if (response.status === 401) {
+            location.href = '/login';
+            throw new Error('登录已过期，请重新登录');
+        }
+        const result = await response.json();
+        if (!response.ok || !result.csrf_token) throw new Error(result.error || '无法刷新请求安全凭据');
+        csrfToken = result.csrf_token;
+        return csrfToken;
+    }
+    window.fetch = async (input, init = {}) => {
+        const method = String(init.method || 'GET').toUpperCase();
+        if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+            await refreshCsrfToken();
+            const headers = new Headers(init.headers || {});
+            headers.set('X-CSRF-Token', csrfToken);
+            init = { ...init, headers };
+        }
+        return originalFetch(input, init);
+    };
     let browserState = { path: '', parentPath: '' };
     let selectedFiles = [];
 
@@ -185,6 +251,8 @@
         document.getElementById('tab-' + name).classList.add('active');
         if (evt && evt.currentTarget) evt.currentTarget.classList.add('active');
         if (name === 'stats') loadStats();
+        if (name === 'audit') loadAudit();
+        if (name === 'releases') loadReleases();
         if (name === 'config') loadConfig();
     }
 
@@ -307,7 +375,7 @@
     }
 
     async function deleteEntry(relativePath, typeLabel, name) {
-        if (!confirm(`确认删除${typeLabel}“${name}”吗？此操作不可恢复。`)) return;
+        if (!confirm(`确认把${typeLabel}“${name}”移入回收站吗？`)) return;
         const resp = await fetch('/api/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -331,9 +399,11 @@
         formData.append('overwrite', document.getElementById('overwriteSelect').value);
         selectedFiles.forEach(file => formData.append('files', file));
 
+        await refreshCsrfToken();
         const result = await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open('POST', '/api/upload');
+            xhr.setRequestHeader('X-CSRF-Token', csrfToken);
             xhr.responseType = 'json';
             xhr.upload.onprogress = (event) => {
                 if (!event.lengthComputable) return;
@@ -373,6 +443,73 @@
         document.getElementById('configEditor').value = JSON.stringify(result, null, 2);
     }
 
+    async function loadReleases() {
+        const body = document.getElementById('releaseBody');
+        const resp = await fetch('/api/releases');
+        if (resp.status === 401) { location.href = '/login'; return; }
+        const result = await resp.json().catch(() => ({}));
+        if (!resp.ok || result.success === false) {
+            body.innerHTML = `<tr><td colspan="6">${escapeHtml(result.error || '读取发布记录失败')}</td></tr>`;
+            return;
+        }
+        if (!result.releases || result.releases.length === 0) {
+            body.innerHTML = '<tr><td colspan="6">暂无发布记录</td></tr>';
+            return;
+        }
+        body.innerHTML = result.releases.map(item => {
+            const action = item.status === 'staged'
+                ? `<button class="btn success small" onclick="publishRelease(${Number(item.id)})">确认发布</button>`
+                : '-';
+            return `<tr>
+                <td>${Number(item.id)}</td>
+                <td>${escapeHtml(item.product)} / ${escapeHtml(item.channel)}</td>
+                <td>${escapeHtml(item.version)}</td>
+                <td>${escapeHtml(item.status)}</td>
+                <td>${escapeHtml(item.created_at || '')}</td>
+                <td>${action}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    async function uploadReleaseSet() {
+        const files = Array.from(document.getElementById('releaseFiles').files || []);
+        if (files.length < 2) { showToast('请选择清单和全部发布资产', 'error'); return; }
+        if (!files.some(file => file.name === 'release-set.json')) {
+            showToast('缺少 release-set.json', 'error');
+            return;
+        }
+        const form = new FormData();
+        files.forEach(file => form.append('files', file));
+        document.getElementById('releaseUploadResult').textContent = '正在上传并校验，请勿关闭页面...';
+        const resp = await fetch('/api/releases/upload', { method: 'POST', body: form });
+        const result = await resp.json().catch(() => ({}));
+        if (!resp.ok || result.success === false) {
+            document.getElementById('releaseUploadResult').textContent = result.error || '发布集上传失败';
+            showToast(result.error || '发布集上传失败', 'error');
+            return;
+        }
+        document.getElementById('releaseFiles').value = '';
+        document.getElementById('releaseUploadResult').textContent = `已暂存 ${result.release.product} ${result.release.version}，发布记录 ID=${result.release.id}`;
+        showToast(result.message || '发布集已暂存', 'success');
+        loadReleases();
+    }
+
+    async function publishRelease(id) {
+        if (!confirm(`确认发布记录 #${id}？发布后该版本目录不可修改。`)) return;
+        const resp = await fetch('/api/releases/publish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+        });
+        const result = await resp.json().catch(() => ({}));
+        if (!resp.ok || result.success === false) {
+            showToast(result.error || '发布失败', 'error');
+            return;
+        }
+        showToast(result.message || '发布成功', 'success');
+        loadReleases();
+    }
+
     async function saveConfig() {
         let payload;
         try {
@@ -402,6 +539,15 @@
         document.getElementById('statsView').textContent = JSON.stringify(result, null, 2);
     }
 
+    async function loadAudit() {
+        const resp = await fetch('/api/audit');
+        if (resp.status === 401) { location.href = '/login'; return; }
+        const result = await resp.json().catch(() => ({}));
+        document.getElementById('auditView').textContent = resp.ok
+            ? JSON.stringify(result.events || [], null, 2)
+            : (result.error || '读取审计日志失败');
+    }
+
     async function generatePages() {
         const resp = await fetch('/api/generate', {
             method: 'POST',
@@ -421,7 +567,7 @@
         const newPassword = document.getElementById('newPassword').value;
         const confirmPassword = document.getElementById('confirmPassword').value;
         if (!currentPassword || !newPassword || !confirmPassword) { showToast('请填写完整', 'error'); return; }
-        if (newPassword.length < 6) { showToast('新密码至少 6 位', 'error'); return; }
+        if (newPassword.length < 12) { showToast('新密码至少 12 位', 'error'); return; }
         if (newPassword !== confirmPassword) { showToast('两次密码不一致', 'error'); return; }
         const resp = await fetch('/api/change-password', {
             method: 'POST',
@@ -434,7 +580,12 @@
             return;
         }
         showToast(result.message || '密码已修改，请重新登录', 'success');
-        setTimeout(() => location.href = '/logout', 1200);
+        setTimeout(() => location.href = '/login', 1200);
+    }
+
+    async function logout() {
+        await fetch('/logout', { method: 'POST' });
+        location.href = '/login';
     }
 
     document.getElementById('fileBody').addEventListener('click', (event) => {

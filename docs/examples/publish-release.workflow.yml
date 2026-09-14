@@ -1,0 +1,18 @@
+name: Publish signed release example
+
+# This is documentation, not an active workflow. The release-producing repository
+# must first build and sign all files in RELEASE_DIRECTORY.
+on:
+  workflow_dispatch:
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Upload and stage a prebuilt release set
+        env:
+          DL_REMOTE: ${{ secrets.DL_SSH_REMOTE }}
+          DL_PUBLISH_NOW: 'false'
+          RELEASE_DIRECTORY: dist/release-set
+        run: bash scripts/publish-release.sh "$RELEASE_DIRECTORY"

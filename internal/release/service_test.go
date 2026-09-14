@@ -1,0 +1,153 @@
+package release
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"io"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"aead.dev/minisign"
+
+	"dladmin-go/internal/store"
+)
+
+func newReleaseServiceFixture(t *testing.T) (*Service, *store.Store, minisign.PrivateKey, int64, string) {
+	t.Helper()
+	root := t.TempDir()
+	stateDir := filepath.Join(root, "state")
+	publicDir := filepath.Join(root, "public")
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	storage, err := store.Open(filepath.Join(stateDir, "dladmin.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = storage.Close() })
+	userID, err := storage.CreateUser(context.Background(), "publisher", "hash", "release_manager")
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, privateKey, err := minisign.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyText, err := publicKey.MarshalText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewService(storage, stateDir, publicDir, string(keyText))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return service, storage, privateKey, userID, publicDir
+}
+
+func putIncomingRelease(t *testing.T, service *Service, privateKey minisign.PrivateKey, incomingID, version string, assets []Asset) {
+	t.Helper()
+	directory := filepath.Join(service.IncomingDir(), incomingID)
+	if err := os.MkdirAll(directory, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for index := range assets {
+		asset := &assets[index]
+		data := []byte("signed bytes for " + asset.File)
+		if err := os.WriteFile(filepath.Join(directory, asset.File), data, 0o640); err != nil {
+			t.Fatal(err)
+		}
+		reader := minisign.NewReader(bytes.NewReader(data))
+		if _, err := io.Copy(io.Discard, reader); err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(data)
+		asset.Size = int64(len(data))
+		asset.SHA256 = hex.EncodeToString(sum[:])
+		asset.Signature = base64.StdEncoding.EncodeToString(reader.Sign(privateKey))
+	}
+	manifest := Manifest{
+		SchemaVersion: 1, Product: "lynx", Channel: "stable", Version: version,
+		Notes: "release " + version, Assets: assets,
+	}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, ManifestName), data, 0o640); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestImportPublishAndSelectExactDelta(t *testing.T) {
+	service, storage, privateKey, userID, publicDir := newReleaseServiceFixture(t)
+	putIncomingRelease(t, service, privateKey, "job-123", "0.9.1", []Asset{
+		{Target: "windows-x86_64", Kind: "full", File: "lynx-full.exe", Mirrors: []string{"https://github.com/100ask/lynx/releases/full.exe"}},
+		{Target: "windows-x86_64", Kind: "delta", FromVersion: "0.9.0", File: "lynx-0.9.0-0.9.1.patch"},
+	})
+
+	staged, err := service.ImportIncoming(context.Background(), "job-123", userID)
+	if err != nil || staged.Status != "staged" {
+		t.Fatalf("unexpected staged release: %#v, %v", staged, err)
+	}
+	published, err := service.Publish(context.Background(), staged.ID)
+	if err != nil || published.Status != "published" {
+		t.Fatalf("unexpected published release: %#v, %v", published, err)
+	}
+	if _, err := os.Stat(filepath.Join(publicDir, "releases", "lynx", "stable", "0.9.1", ManifestName)); err != nil {
+		t.Fatal(err)
+	}
+	assetInfo, err := os.Stat(filepath.Join(publicDir, "releases", "lynx", "stable", "0.9.1", "lynx-full.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assetInfo.Mode().Perm() != 0o644 {
+		t.Fatalf("published asset must be Nginx-readable: mode=%v", assetInfo.Mode().Perm())
+	}
+	head, err := storage.ChannelHead(context.Background(), "lynx", "stable")
+	if err != nil || head.ID != staged.ID {
+		t.Fatalf("unexpected head: %#v, %v", head, err)
+	}
+
+	update, err := service.SelectUpdate(context.Background(), "lynx", "stable", "windows-x86_64", "0.9.0")
+	if err != nil || !update.Available || update.Strategy != "delta" || update.Fallback == nil {
+		t.Fatalf("unexpected delta selection: %#v, %v", update, err)
+	}
+	if update.Asset.URL != "/releases/lynx/stable/0.9.1/lynx-0.9.0-0.9.1.patch" {
+		t.Fatalf("unexpected asset URL: %s", update.Asset.URL)
+	}
+	update, err = service.SelectUpdate(context.Background(), "lynx", "stable", "windows-x86_64", "0.8.9")
+	if err != nil || update.Strategy != "full" || update.Fallback != nil {
+		t.Fatalf("incompatible pre-1.0 version must get full installer: %#v, %v", update, err)
+	}
+	update, err = service.SelectUpdate(context.Background(), "lynx", "stable", "windows-x86_64", "0.9.1")
+	if err != nil || update.Available {
+		t.Fatalf("current version must not get an update: %#v, %v", update, err)
+	}
+	full, err := service.SelectFullUpdate(context.Background(), "lynx", "stable", "windows-x86_64", "0.9.0")
+	if err != nil || full.Strategy != "full" || full.Asset == nil || full.Asset.Kind != "full" || full.Fallback != nil {
+		t.Fatalf("Tauri-compatible selection must force the full fallback: %#v, %v", full, err)
+	}
+}
+
+func TestPublishRevalidatesStagedBytes(t *testing.T) {
+	service, _, privateKey, userID, _ := newReleaseServiceFixture(t)
+	putIncomingRelease(t, service, privateKey, "tamper-job", "1.0.0", []Asset{{
+		Target: "linux-x86-64", Kind: "full", File: "lynx.AppImage",
+	}})
+	staged, err := service.ImportIncoming(context.Background(), "tamper-job", userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(service.stateDir, staged.StagedPath, "lynx.AppImage"), []byte("tampered"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Publish(context.Background(), staged.ID); err == nil {
+		t.Fatal("tampered staged release was published")
+	}
+}

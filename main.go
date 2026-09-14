@@ -1,10 +1,7 @@
 package main
 
 import (
-	"crypto/rand"
-	"crypto/sha256"
 	"embed"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +16,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"dladmin-go/internal/release"
+	appsecurity "dladmin-go/internal/security"
+	"dladmin-go/internal/store"
 )
 
 //go:embed web/*.html
@@ -104,17 +105,23 @@ type StatsData struct {
 }
 
 type App struct {
-	baseDir    string
-	configPath string
-	authPath   string
-	statsPath  string
-	templates  *template.Template
+	baseDir           string
+	configPath        string
+	statsPath         string
+	stateDir          string
+	trashDir          string
+	templates         *template.Template
+	store             *store.Store
+	loginLimit        *appsecurity.LoginLimiter
+	cookieSecure      bool
+	dummyPasswordHash string
+	releases          *release.Service
+	releaseConfigErr  string
+	releaseBaseURL    string
 
-	mu       sync.RWMutex
-	config   Config
-	auth     AuthConfig
-	stats    StatsData
-	sessions map[string]time.Time
+	mu     sync.RWMutex
+	config Config
+	stats  StatsData
 }
 
 type loginPageData struct {
@@ -122,7 +129,9 @@ type loginPageData struct {
 }
 
 type adminPageData struct {
-	Username string
+	Username  string
+	Role      string
+	CSRFToken string
 }
 
 type breadcrumbItem struct {
@@ -158,30 +167,36 @@ type directoryPageData struct {
 }
 
 type apiEntry struct {
-	Name        string `json:"name"`
+	Name         string `json:"name"`
 	RelativePath string `json:"relative_path"`
-	Type        string `json:"type"`
-	Size        int64  `json:"size"`
-	SizeDisplay string `json:"size_display"`
-	ModifiedAt  string `json:"modified_at"`
+	Type         string `json:"type"`
+	Size         int64  `json:"size"`
+	SizeDisplay  string `json:"size_display"`
+	ModifiedAt   string `json:"modified_at"`
 }
 
 type directoryPayload struct {
-	Success     bool       `json:"success"`
-	CurrentPath string     `json:"current_path"`
-	CurrentLabel string    `json:"current_label"`
-	ParentPath  string     `json:"parent_path"`
-	EntryCount  int        `json:"entry_count"`
-	Entries     []apiEntry `json:"entries"`
+	Success      bool       `json:"success"`
+	CurrentPath  string     `json:"current_path"`
+	CurrentLabel string     `json:"current_label"`
+	ParentPath   string     `json:"parent_path"`
+	EntryCount   int        `json:"entry_count"`
+	Entries      []apiEntry `json:"entries"`
 }
 
 func defaultConfig() Config {
 	return Config{
 		Breadcrumb: BreadcrumbConfig{FallbackLevels: 2, StartFrom: "AppBaseCode"},
 		Exclude: ExcludeConfig{
-			Extensions: []string{".tmp", ".temp", ".bak", ".swp", ".py", ".json", ".txt", ".html"},
-			Files:      []string{"Thumbs.db", "desktop.ini", ".DS_Store", "index.html"},
-			Hidden:     true,
+			Extensions: []string{
+				".tmp", ".temp", ".bak", ".swp", ".py", ".go", ".mod", ".sum",
+				".json", ".txt", ".html", ".sh", ".service", ".conf", ".env",
+			},
+			Files: []string{
+				"Thumbs.db", "desktop.ini", ".DS_Store", "index.html", "admin_auth.json",
+				"access_stats.json", "config.json", "dladmin-go",
+			},
+			Hidden: true,
 		},
 		FileIcons: map[string]IconInfo{
 			"default": {Icon: "file", Color: "#95a5a6"},
@@ -228,7 +243,7 @@ func defaultConfig() Config {
 			Language: "zh-CN",
 			LogoText: "100ASK DL",
 			Subtitle: "百问科技资源下载站",
-			Title:    "系统镜像工具 原理图 软件下载中心",
+			Title:    "百问科技资源下载中心",
 			URL:      "https://dl.100ask.net",
 		},
 		Stats: StatsConfig{
@@ -240,7 +255,7 @@ func defaultConfig() Config {
 
 func (c *Config) applyDefaults() {
 	def := defaultConfig()
-	if c.Site.Title == "" {
+	if c.Site.Title == "" || c.Site.Title == "系统镜像工具 原理图 软件下载中心" {
 		c.Site.Title = def.Site.Title
 	}
 	if c.Site.LogoText == "" {
@@ -278,24 +293,12 @@ func (c *Config) applyDefaults() {
 	}
 }
 
-func defaultAuth() AuthConfig {
-	return AuthConfig{
-		Username:     "admin",
-		PasswordHash: hashPassword("admin123"),
-	}
-}
-
 func defaultStats() StatsData {
 	return StatsData{
 		Daily:     map[string]int{},
 		Pages:     map[string]int{},
 		Downloads: map[string]int{},
 	}
-}
-
-func hashPassword(password string) string {
-	sum := sha256.Sum256([]byte(password))
-	return hex.EncodeToString(sum[:])
 }
 
 func loadJSONFile[T any](filePath string, fallback T) (T, error) {
@@ -325,7 +328,7 @@ func writeJSONFile(filePath string, value any) error {
 		return err
 	}
 	tmpPath := filePath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
+	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmpPath, filePath)
@@ -336,38 +339,96 @@ func newApp(baseDir string) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	baseDir, err = filepath.EvalSymlinks(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("公开目录不存在或不可访问: %w", err)
+	}
 	tpl, err := template.ParseFS(templateFS, "web/*.html")
 	if err != nil {
 		return nil, err
 	}
 
+	stateDir := strings.TrimSpace(os.Getenv("DL_STATE_DIR"))
+	if stateDir == "" {
+		stateDir = filepath.Join(baseDir, ".dladmin-state")
+	} else if stateDir, err = filepath.Abs(stateDir); err != nil {
+		return nil, fmt.Errorf("状态目录无效: %w", err)
+	}
+	if err := os.MkdirAll(stateDir, 0o750); err != nil {
+		return nil, fmt.Errorf("创建状态目录失败: %w", err)
+	}
+	database, err := store.Open(filepath.Join(stateDir, "dladmin.db"))
+	if err != nil {
+		return nil, err
+	}
+	dummyPasswordHash, err := appsecurity.HashPassword("not a valid administrator password")
+	if err != nil {
+		_ = database.Close()
+		return nil, err
+	}
 	app := &App{
-		baseDir:    baseDir,
-		configPath: filepath.Join(baseDir, "config.json"),
-		authPath:   filepath.Join(baseDir, "admin_auth.json"),
-		statsPath:  filepath.Join(baseDir, "access_stats.json"),
-		templates:  tpl,
-		sessions:   map[string]time.Time{},
+		baseDir:           baseDir,
+		configPath:        filepath.Join(stateDir, "config.json"),
+		statsPath:         filepath.Join(stateDir, "access_stats.json"),
+		stateDir:          stateDir,
+		trashDir:          filepath.Join(stateDir, "trash"),
+		templates:         tpl,
+		store:             database,
+		loginLimit:        appsecurity.NewLoginLimiter(5, 15*time.Minute, 15*time.Minute),
+		cookieSecure:      !strings.EqualFold(strings.TrimSpace(os.Getenv("DL_COOKIE_SECURE")), "false"),
+		dummyPasswordHash: dummyPasswordHash,
+	}
+	releaseKey := strings.TrimSpace(os.Getenv("DL_RELEASE_PUBLIC_KEY"))
+	if keyFile := strings.TrimSpace(os.Getenv("DL_RELEASE_PUBLIC_KEY_FILE")); keyFile != "" {
+		keyBytes, readErr := os.ReadFile(keyFile)
+		if readErr != nil {
+			_ = database.Close()
+			return nil, fmt.Errorf("读取发布签名公钥失败: %w", readErr)
+		}
+		releaseKey = string(keyBytes)
+	}
+	if releaseKey == "" {
+		app.releaseConfigErr = "未配置 DL_RELEASE_PUBLIC_KEY 或 DL_RELEASE_PUBLIC_KEY_FILE"
+	} else {
+		app.releases, err = release.NewService(database, stateDir, baseDir, releaseKey)
+		if err != nil {
+			_ = database.Close()
+			return nil, fmt.Errorf("初始化发布服务失败: %w", err)
+		}
+	}
+	app.releaseBaseURL = strings.TrimRight(strings.TrimSpace(os.Getenv("DL_PUBLIC_BASE_URL")), "/")
+	if app.releaseBaseURL == "" {
+		app.releaseBaseURL = "https://dl.100ask.net"
+	}
+	parsedReleaseBase, parseErr := url.Parse(app.releaseBaseURL)
+	if parseErr != nil || parsedReleaseBase.Scheme != "https" || parsedReleaseBase.Host == "" || parsedReleaseBase.User != nil || parsedReleaseBase.RawQuery != "" || parsedReleaseBase.Fragment != "" {
+		_ = database.Close()
+		return nil, errors.New("DL_PUBLIC_BASE_URL 必须是无凭据、参数和片段的 HTTPS 站点地址")
+	}
+	if err := app.bootstrapAdministrator(filepath.Join(baseDir, "admin_auth.json")); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	if err := migrateLegacyRuntimeFile(filepath.Join(baseDir, "config.json"), app.configPath); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	if err := migrateLegacyRuntimeFile(filepath.Join(baseDir, "access_stats.json"), app.statsPath); err != nil {
+		_ = database.Close()
+		return nil, err
 	}
 
 	cfg, err := loadJSONFile(app.configPath, defaultConfig())
 	if err != nil {
+		_ = database.Close()
 		return nil, err
 	}
 	cfg.applyDefaults()
 	app.config = cfg
 
-	auth, err := loadJSONFile(app.authPath, defaultAuth())
-	if err != nil {
-		return nil, err
-	}
-	if auth.Username == "" {
-		auth = defaultAuth()
-	}
-	app.auth = auth
-
 	stats, err := loadJSONFile(app.statsPath, defaultStats())
 	if err != nil {
+		_ = database.Close()
 		return nil, err
 	}
 	if stats.Daily == nil {
@@ -394,149 +455,34 @@ func main() {
 		port = "5000"
 	}
 
-	app, err := newApp(".")
+	publicDir := strings.TrimSpace(os.Getenv("DL_PUBLIC_DIR"))
+	if publicDir == "" {
+		publicDir = "."
+	}
+	app, err := newApp(publicDir)
 	if err != nil {
 		fmt.Println("启动失败:", err)
 		os.Exit(1)
 	}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/login", app.handleLogin)
-	mux.HandleFunc("/logout", app.handleLogout)
-	mux.HandleFunc("/admin", app.requireLogin(app.handleAdmin))
-	mux.HandleFunc("/api/config", app.requireLogin(app.handleConfigAPI))
-	mux.HandleFunc("/api/stats", app.requireLogin(app.handleStatsAPI))
-	mux.HandleFunc("/api/files", app.requireLogin(app.handleFilesAPI))
-	mux.HandleFunc("/api/mkdir", app.requireLogin(app.handleMkdirAPI))
-	mux.HandleFunc("/api/upload", app.requireLogin(app.handleUploadAPI))
-	mux.HandleFunc("/api/delete", app.requireLogin(app.handleDeleteAPI))
-	mux.HandleFunc("/api/generate", app.requireLogin(app.handleGenerateAPI))
-	mux.HandleFunc("/api/change-password", app.requireLogin(app.handleChangePasswordAPI))
-	mux.HandleFunc("/api/visit", app.handleVisitTrackAPI)
-	mux.HandleFunc("/api/download", app.handleDownloadTrackAPI)
-	mux.HandleFunc("/", app.handlePublic)
 
 	addr := host + ":" + port
 	fmt.Println("==================================================")
 	fmt.Println("  dladmin-go - 纯 Go 下载站后台")
 	fmt.Println("  站点地址: http://" + addr)
 	fmt.Println("  管理后台: http://" + addr + "/admin")
-	fmt.Println("  管理员账号: admin")
-	fmt.Println("  默认密码: admin123（请及时修改）")
+	fmt.Println("  认证模式: SQLite / bcrypt / CSRF")
 	fmt.Println("==================================================")
 
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           app.handler(),
 		ReadHeaderTimeout: 15 * time.Second,
+		IdleTimeout:       90 * time.Second,
 	}
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Println("服务退出:", err)
 		os.Exit(1)
 	}
-}
-
-func (a *App) requireLogin(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !a.isLoggedIn(r) {
-			if strings.HasPrefix(r.URL.Path, "/api/") {
-				writeJSON(w, http.StatusUnauthorized, map[string]any{"success": false, "error": "未登录"})
-				return
-			}
-			http.Redirect(w, r, "/login", http.StatusFound)
-			return
-		}
-		next(w, r)
-	}
-}
-
-func (a *App) isLoggedIn(r *http.Request) bool {
-	cookie, err := r.Cookie("dladmin_session")
-	if err != nil || cookie.Value == "" {
-		return false
-	}
-	a.mu.RLock()
-	expireAt, ok := a.sessions[cookie.Value]
-	a.mu.RUnlock()
-	return ok && expireAt.After(time.Now())
-}
-
-func (a *App) createSession(w http.ResponseWriter) error {
-	tokenBytes := make([]byte, 32)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return err
-	}
-	token := hex.EncodeToString(tokenBytes)
-	a.mu.Lock()
-	a.sessions[token] = time.Now().Add(24 * time.Hour)
-	a.mu.Unlock()
-	http.SetCookie(w, &http.Cookie{
-		Name:     "dladmin_session",
-		Value:    token,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   86400,
-	})
-	return nil
-}
-
-func (a *App) clearSession(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie("dladmin_session"); err == nil {
-		a.mu.Lock()
-		delete(a.sessions, cookie.Value)
-		a.mu.Unlock()
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     "dladmin_session",
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		MaxAge:   -1,
-	})
-}
-
-func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		if a.isLoggedIn(r) {
-			http.Redirect(w, r, "/admin", http.StatusFound)
-			return
-		}
-		a.renderTemplate(w, "login.html", loginPageData{})
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		a.renderTemplate(w, "login.html", loginPageData{Error: "请求数据无效"})
-		return
-	}
-	username := strings.TrimSpace(r.FormValue("username"))
-	password := r.FormValue("password")
-
-	a.mu.RLock()
-	auth := a.auth
-	a.mu.RUnlock()
-
-	if username != auth.Username || hashPassword(password) != auth.PasswordHash {
-		a.renderTemplate(w, "login.html", loginPageData{Error: "用户名或密码错误"})
-		return
-	}
-	if err := a.createSession(w); err != nil {
-		a.renderTemplate(w, "login.html", loginPageData{Error: "创建会话失败"})
-		return
-	}
-	http.Redirect(w, r, "/admin", http.StatusFound)
-}
-
-func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
-	a.clearSession(w, r)
-	http.Redirect(w, r, "/login", http.StatusFound)
-}
-
-func (a *App) handleAdmin(w http.ResponseWriter, r *http.Request) {
-	a.mu.RLock()
-	auth := a.auth
-	a.mu.RUnlock()
-	a.renderTemplate(w, "admin.html", adminPageData{Username: auth.Username})
 }
 
 func (a *App) handleConfigAPI(w http.ResponseWriter, r *http.Request) {
@@ -547,6 +493,9 @@ func (a *App) handleConfigAPI(w http.ResponseWriter, r *http.Request) {
 		a.mu.RUnlock()
 		writeJSON(w, http.StatusOK, cfg)
 	case http.MethodPost:
+		if _, ok := requireSessionRole(w, r, "admin"); !ok {
+			return
+		}
 		var cfg Config
 		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "配置 JSON 无效"})
@@ -554,12 +503,14 @@ func (a *App) handleConfigAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		cfg.applyDefaults()
 		if err := writeJSONFile(a.configPath, cfg); err != nil {
+			a.audit(r, sessionPointer(r), "update", "site_config", "config", "failure", `{}`)
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": "保存配置失败"})
 			return
 		}
 		a.mu.Lock()
 		a.config = cfg
 		a.mu.Unlock()
+		a.audit(r, sessionPointer(r), "update", "site_config", "config", "success", `{}`)
 		writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "配置已保存"})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -597,6 +548,9 @@ func (a *App) handleMkdirAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if _, ok := requireSessionRole(w, r, "admin", "uploader"); !ok {
+		return
+	}
 	var payload struct {
 		ParentPath string `json:"parent_path"`
 		Name       string `json:"name"`
@@ -605,7 +559,7 @@ func (a *App) handleMkdirAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "请求数据无效"})
 		return
 	}
-	parentDir, _, err := a.resolvePath(payload.ParentPath)
+	parentDir, parentRelative, err := a.resolvePath(payload.ParentPath)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
 		return
@@ -615,15 +569,21 @@ func (a *App) handleMkdirAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
 		return
 	}
+	if isReleaseManagedPath(path.Join(parentRelative, name)) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "版本发布目录只能通过发布流程修改"})
+		return
+	}
 	target := filepath.Join(parentDir, name)
-	if err := ensureSubPath(a.baseDir, target); err != nil {
+	if err := ensureNoSymlink(a.baseDir, target); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "目录路径非法"})
 		return
 	}
 	if err := os.MkdirAll(target, 0o755); err != nil {
+		a.audit(r, sessionPointer(r), "mkdir", "directory", a.toRelativePath(target), "failure", `{}`)
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": "创建目录失败"})
 		return
 	}
+	a.audit(r, sessionPointer(r), "mkdir", "directory", a.toRelativePath(target), "success", `{}`)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success":         true,
 		"message":         fmt.Sprintf("目录“%s”已创建", name),
@@ -637,13 +597,21 @@ func (a *App) handleUploadAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if err := r.ParseMultipartForm(64 << 20); err != nil {
+	if _, ok := requireSessionRole(w, r, "admin", "uploader"); !ok {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 20<<30)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "上传表单无效"})
 		return
 	}
-	targetDir, _, err := a.resolvePath(r.FormValue("target_path"))
+	targetDir, targetRelative, err := a.resolvePath(r.FormValue("target_path"))
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	if isReleaseManagedPath(targetRelative) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "版本发布目录只能通过发布流程修改"})
 		return
 	}
 	overwrite := strings.EqualFold(r.FormValue("overwrite"), "true")
@@ -662,7 +630,7 @@ func (a *App) handleUploadAPI(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		targetPath := filepath.Join(targetDir, name)
-		if err := ensureSubPath(a.baseDir, targetPath); err != nil {
+		if err := ensureNoSymlink(a.baseDir, targetPath); err != nil {
 			skipped = append(skipped, name)
 			continue
 		}
@@ -680,10 +648,12 @@ func (a *App) handleUploadAPI(w http.ResponseWriter, r *http.Request) {
 		if err := writeUploadedFile(targetPath, src); err != nil {
 			skipped = append(skipped, name)
 			_ = src.Close()
+			a.audit(r, sessionPointer(r), "upload", "file", a.toRelativePath(targetPath), "failure", `{}`)
 			continue
 		}
 		_ = src.Close()
 		saved = append(saved, name)
+		a.audit(r, sessionPointer(r), "upload", "file", a.toRelativePath(targetPath), "success", `{}`)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -701,6 +671,9 @@ func (a *App) handleDeleteAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if _, ok := requireSessionRole(w, r, "admin", "uploader"); !ok {
+		return
+	}
 	var payload struct {
 		Path string `json:"path"`
 	}
@@ -708,77 +681,52 @@ func (a *App) handleDeleteAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "请求数据无效"})
 		return
 	}
-	target, _, err := a.resolvePath(payload.Path)
+	target, targetRelative, err := a.resolvePath(payload.Path)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	if isReleaseManagedPath(targetRelative) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "已发布版本不可通过文件管理删除"})
 		return
 	}
 	if filepath.Clean(target) == filepath.Clean(a.baseDir) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "不能删除站点根目录"})
 		return
 	}
-	info, err := os.Stat(target)
+	_, err = os.Stat(target)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": "目标不存在"})
 		return
 	}
-	if info.IsDir() {
-		err = os.RemoveAll(target)
-	} else {
-		err = os.Remove(target)
-	}
+	trashID, err := a.moveToTrash(target, a.toRelativePath(target))
 	if err != nil {
+		a.audit(r, sessionPointer(r), "trash", "path", payload.Path, "failure", `{}`)
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": "删除失败"})
 		return
 	}
+	a.audit(r, sessionPointer(r), "trash", "path", payload.Path, "success", fmt.Sprintf(`{"trash_id":%q}`, trashID))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success":         true,
-		"message":         "删除成功",
+		"message":         "已移入回收站",
+		"trash_id":        trashID,
 		"generated_count": 0,
 	})
 }
 
 func (a *App) handleGenerateAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if _, ok := requireSessionRole(w, r, "admin", "uploader"); !ok {
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"count":   0,
 		"message": "Go 版本为动态目录展示，无需生成静态页",
 	})
-}
-
-func (a *App) handleChangePasswordAPI(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	var payload struct {
-		CurrentPassword string `json:"current_password"`
-		NewPassword     string `json:"new_password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "请求数据无效"})
-		return
-	}
-	if len(payload.NewPassword) < 6 {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "新密码至少 6 位"})
-		return
-	}
-	a.mu.RLock()
-	auth := a.auth
-	a.mu.RUnlock()
-	if hashPassword(payload.CurrentPassword) != auth.PasswordHash {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "当前密码错误"})
-		return
-	}
-	auth.PasswordHash = hashPassword(payload.NewPassword)
-	if err := writeJSONFile(a.authPath, auth); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": "保存密码失败"})
-		return
-	}
-	a.mu.Lock()
-	a.auth = auth
-	a.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "密码已修改，请重新登录"})
 }
 
 func (a *App) handleVisitTrackAPI(w http.ResponseWriter, r *http.Request) {
@@ -833,6 +781,9 @@ func (a *App) handlePublic(w http.ResponseWriter, r *http.Request) {
 	if !a.shouldAllowPublicFile(info.Name()) {
 		http.NotFound(w, r)
 		return
+	}
+	if isReleaseManagedPath(relPath) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 	a.recordDownload("/" + relPath)
 	http.ServeFile(w, r, fullPath)
@@ -1018,7 +969,7 @@ func (a *App) resolvePath(raw string) (string, string, error) {
 	}
 	rel := strings.TrimPrefix(cleanURLPath, "/")
 	fullPath := filepath.Clean(filepath.Join(a.baseDir, filepath.FromSlash(rel)))
-	if err := ensureSubPath(a.baseDir, fullPath); err != nil {
+	if err := ensureNoSymlink(a.baseDir, fullPath); err != nil {
 		return "", "", errors.New("路径非法")
 	}
 	return fullPath, rel, nil
@@ -1123,7 +1074,7 @@ func (a *App) iconFor(name string, isDir bool) string {
 
 func (a *App) serveRawFile(w http.ResponseWriter, r *http.Request, rel string) {
 	fullPath := filepath.Clean(filepath.Join(a.baseDir, filepath.FromSlash(rel)))
-	if err := ensureSubPath(a.baseDir, fullPath); err != nil {
+	if err := ensureNoSymlink(a.baseDir, fullPath); err != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -1149,6 +1100,11 @@ func sanitizeName(name string) (string, error) {
 	return name, nil
 }
 
+func isReleaseManagedPath(relative string) bool {
+	relative = strings.Trim(strings.ReplaceAll(relative, "\\", "/"), "/")
+	return relative == "releases" || strings.HasPrefix(relative, "releases/")
+}
+
 func ensureSubPath(baseDir, target string) error {
 	baseDir = filepath.Clean(baseDir)
 	target = filepath.Clean(target)
@@ -1161,14 +1117,59 @@ func ensureSubPath(baseDir, target string) error {
 	return nil
 }
 
-func writeUploadedFile(targetPath string, src io.Reader) error {
-	tmpPath := targetPath + ".upload"
-	dst, err := os.Create(tmpPath)
+func ensureNoSymlink(baseDir, target string) error {
+	if err := ensureSubPath(baseDir, target); err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(filepath.Clean(baseDir), filepath.Clean(target))
 	if err != nil {
 		return err
 	}
-	defer dst.Close()
+	current := filepath.Clean(baseDir)
+	if rel == "." {
+		return nil
+	}
+	for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("路径包含不允许的符号链接")
+		}
+	}
+	return nil
+}
+
+func writeUploadedFile(targetPath string, src io.Reader) error {
+	if info, err := os.Lstat(targetPath); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("拒绝覆盖符号链接")
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	dst, err := os.CreateTemp(filepath.Dir(targetPath), ".dl-upload-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := dst.Name()
+	defer os.Remove(tmpPath)
+	if err := dst.Chmod(0o644); err != nil {
+		_ = dst.Close()
+		return err
+	}
 	if _, err := io.Copy(dst, src); err != nil {
+		_ = dst.Close()
+		return err
+	}
+	if err := dst.Sync(); err != nil {
+		_ = dst.Close()
+		return err
+	}
+	if err := dst.Close(); err != nil {
 		return err
 	}
 	return os.Rename(tmpPath, targetPath)

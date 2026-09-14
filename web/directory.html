@@ -3,165 +3,358 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="{{.IntroText}}">
     <title>{{.PageTitle}}</title>
     <style>
-        :root { --primary:#2563eb; --success:#16a34a; --gray:#6b7280; --border:#e5e7eb; --bg:#f8fafc; }
+        :root {
+            --ink: #0b1728;
+            --ink-soft: #233248;
+            --muted: #64748b;
+            --line: #dde4ec;
+            --surface: #ffffff;
+            --canvas: #f3f6f9;
+            --brand: #ff6a2a;
+            --brand-dark: #df4f15;
+            --blue: #2368d9;
+            --radius: 16px;
+            color-scheme: light;
+        }
         * { box-sizing: border-box; }
-        body { margin: 0; font-family: Arial, sans-serif; background: var(--bg); color: #111827; }
-        .nav { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #fff; padding: 0 18px; position: sticky; top: 0; z-index: 20; }
-        .nav-inner { max-width: 1240px; margin: 0 auto; min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
-        .brand { color: #fff; text-decoration: none; font-weight: 700; font-size: 18px; padding: 14px 0; }
-        .nav-links { display: flex; gap: 10px; flex-wrap: wrap; }
-        .nav-links a { color: rgba(255,255,255,.92); text-decoration: none; font-size: 14px; }
-        .nav-links a:hover { text-decoration: underline; }
-        .container { max-width: 1240px; margin: 0 auto; padding: 0 18px; }
-        .breadcrumb { background: #fff; border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 13px; }
-        .breadcrumb a { color: var(--primary); text-decoration: none; }
-        .breadcrumb span { color: #94a3b8; margin: 0 6px; }
-        .hero { padding: 18px 0; }
-        .hero-card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
-        .hero-card h1 { margin: 0 0 8px; font-size: 24px; }
-        .hero-card p { margin: 0; color: var(--gray); }
-        .hero-card .meta { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; }
-        .badge { background: #eff6ff; color: #1d4ed8; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
-        .toolbar { display: flex; gap: 12px; justify-content: space-between; align-items: center; flex-wrap: wrap; margin: 16px 0; }
-        .toolbar input { width: 320px; max-width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; }
-        .table-wrap { background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: auto; box-shadow: 0 3px 10px rgba(0,0,0,.03); }
+        html { scroll-behavior: smooth; }
+        body {
+            margin: 0;
+            min-width: 320px;
+            background: var(--canvas);
+            color: var(--ink);
+            font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: inherit; }
+        button, input { font: inherit; }
+        .shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; }
+
+        .site-header {
+            position: sticky;
+            top: 0;
+            z-index: 30;
+            background: rgba(8, 21, 37, .94);
+            border-bottom: 1px solid rgba(255,255,255,.1);
+            backdrop-filter: blur(14px);
+        }
+        .header-inner { min-height: 68px; display: flex; align-items: center; gap: 28px; }
+        .brand { display: block; width: 160px; height: 42px; position: relative; overflow: hidden; flex: 0 0 auto; }
+        .brand img { position: absolute; top: -16px; left: -22px; width: 202px; max-width: none; height: auto; }
+        .main-nav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+        .main-nav a {
+            padding: 9px 12px;
+            border-radius: 9px;
+            color: #cbd5e1;
+            text-decoration: none;
+            font-size: 14px;
+            transition: background .16s ease, color .16s ease;
+        }
+        .main-nav a:hover { background: rgba(255,255,255,.08); color: #fff; }
+
+        .hero {
+            position: relative;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at 78% 12%, rgba(35,104,217,.34), transparent 34%),
+                radial-gradient(circle at 88% 90%, rgba(255,106,42,.18), transparent 28%),
+                #081525;
+            color: #fff;
+        }
+        .hero::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            opacity: .18;
+            pointer-events: none;
+            background-image: linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px);
+            background-size: 42px 42px;
+            mask-image: linear-gradient(90deg, transparent 35%, #000);
+        }
+        .hero-inner { position: relative; z-index: 1; padding: 54px 0 50px; }
+        .eyebrow { display: flex; align-items: center; gap: 9px; color: #ffb18e; font-size: 12px; font-weight: 800; letter-spacing: .16em; }
+        .eyebrow::before { content: ""; width: 28px; height: 2px; background: var(--brand); border-radius: 99px; }
+        .hero h1 { max-width: 760px; margin: 17px 0 12px; font-size: clamp(32px, 5vw, 52px); line-height: 1.12; letter-spacing: -.045em; }
+        .hero p { max-width: 680px; margin: 0; color: #b9c6d6; font-size: 16px; line-height: 1.8; }
+        .hero-meta { margin-top: 26px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .meta-chip { padding: 8px 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 999px; background: rgba(255,255,255,.06); color: #d9e2ec; font-size: 12px; }
+
+        .quick-grid { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: -24px; }
+        .quick-card {
+            min-height: 116px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 20px;
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            background: var(--surface);
+            box-shadow: 0 14px 35px rgba(16,31,52,.09);
+            text-decoration: none;
+            transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+        }
+        .quick-card:hover { transform: translateY(-3px); border-color: #bfcbd8; box-shadow: 0 18px 42px rgba(16,31,52,.13); }
+        .quick-icon { width: 48px; height: 48px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 14px; background: #eef4ff; color: var(--blue); }
+        .quick-card:nth-child(2) .quick-icon { background: #fff2ec; color: var(--brand-dark); }
+        .quick-card:nth-child(3) .quick-icon { background: #eaf8f4; color: #16856d; }
+        .quick-icon svg { width: 24px; height: 24px; }
+        .quick-copy strong { display: block; margin-bottom: 5px; font-size: 16px; }
+        .quick-copy span { color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+        main { padding: 30px 0 54px; }
+        .breadcrumb { display: flex; gap: 8px; align-items: center; min-height: 22px; margin-bottom: 16px; color: var(--muted); font-size: 13px; overflow-x: auto; white-space: nowrap; }
+        .breadcrumb a { color: var(--muted); text-decoration: none; }
+        .breadcrumb a:hover { color: var(--blue); }
+        .breadcrumb .separator { color: #b5c0ce; }
+        .breadcrumb strong { color: var(--ink-soft); }
+
+        .resource-panel { overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: 0 10px 28px rgba(16,31,52,.06); }
+        .panel-head { padding: 24px 26px 20px; display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--line); }
+        .panel-title small { display: block; margin-bottom: 6px; color: var(--brand-dark); font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+        .panel-title h2 { margin: 0; font-size: 22px; letter-spacing: -.02em; }
+        .panel-title p { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
+        .search { position: relative; width: min(360px, 100%); }
+        .search svg { position: absolute; left: 13px; top: 50%; width: 18px; height: 18px; color: #7b8ba0; transform: translateY(-50%); pointer-events: none; }
+        .search input { width: 100%; height: 44px; padding: 0 42px 0 42px; border: 1px solid #cbd5e1; border-radius: 12px; outline: none; color: var(--ink); background: #f8fafc; }
+        .search input:focus { border-color: var(--blue); background: #fff; box-shadow: 0 0 0 3px rgba(35,104,217,.12); }
+        .clear-search { position: absolute; right: 8px; top: 7px; width: 30px; height: 30px; display: none; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+        .clear-search:hover { background: #e8edf3; color: var(--ink); }
+        .clear-search.visible { display: block; }
+
+        .table-wrap { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 12px 14px; border-bottom: 1px solid var(--border); text-align: left; font-size: 14px; }
-        th { background: #f8fafc; color: #475569; cursor: pointer; }
-        tr:hover { background: #f8fbff; }
-        .name-cell { display: flex; align-items: center; gap: 10px; }
-        .icon { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: #f1f5f9; }
-        .dir .icon { background: #fef3c7; }
-        .name-cell a { text-decoration: none; color: #111827; font-weight: 600; }
-        .name-cell a:hover { color: var(--primary); }
-        .dl { display: inline-block; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--primary); color: var(--primary); text-decoration: none; font-size: 12px; font-weight: 700; }
-        .dl:hover { background: var(--primary); color: #fff; }
-        .readme { background: #fffdf5; border: 1px solid #fde68a; border-radius: 12px; padding: 16px; margin: 16px 0; }
-        .readme h2 { margin-top: 0; font-size: 18px; color: #92400e; }
-        .readme pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: Consolas, monospace; font-size: 13px; color: #374151; }
-        .footer { margin-top: 24px; background: #111827; color: #cbd5e1; padding: 24px 0; }
-        .footer-inner { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-        .footer a { color: #cbd5e1; text-decoration: none; margin-left: 12px; }
-        .footer a:hover { color: #fff; }
-        .hidden { display: none; }
-        @media (max-width: 768px) {
-            .toolbar { align-items: stretch; }
-            .toolbar input { width: 100%; }
-            th, td { padding: 10px 8px; font-size: 12px; }
+        th { padding: 13px 20px; border-bottom: 1px solid var(--line); background: #f8fafc; text-align: left; }
+        th button { padding: 0; border: 0; background: transparent; color: #65758a; font-size: 12px; font-weight: 700; cursor: pointer; }
+        th button:hover { color: var(--ink); }
+        td { padding: 15px 20px; border-bottom: 1px solid #edf1f5; color: var(--ink-soft); font-size: 13px; }
+        tbody tr { transition: background .14s ease; }
+        tbody tr:hover { background: #f8fbff; }
+        tbody tr:last-child td { border-bottom: 0; }
+        .name-cell { min-width: 280px; display: flex; align-items: center; gap: 13px; }
+        .entry-icon { width: 40px; height: 40px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 11px; background: #eef4ff; color: var(--blue); }
+        .file .entry-icon { background: #f1f4f7; color: #63758b; }
+        .entry-icon svg { width: 21px; height: 21px; }
+        .entry-name { min-width: 0; }
+        .entry-name a { display: block; overflow-wrap: anywhere; color: var(--ink); text-decoration: none; font-size: 14px; font-weight: 700; }
+        .entry-name a:hover { color: var(--blue); }
+        .entry-type { margin-top: 4px; color: #8b99aa; font-size: 11px; }
+        .action-link { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border-radius: 9px; color: var(--blue); background: #edf4ff; text-decoration: none; font-size: 12px; font-weight: 750; white-space: nowrap; }
+        .action-link:hover { color: #fff; background: var(--blue); }
+        .action-link svg { width: 15px; height: 15px; }
+        .no-results { display: none; padding: 46px 20px; color: var(--muted); text-align: center; }
+        .no-results.visible { display: block; }
+        .is-hidden { display: none; }
+
+        .readme { margin-top: 20px; padding: 24px 26px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
+        .readme h2 { margin: 0 0 14px; font-size: 17px; }
+        .readme pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #495a70; font: 13px/1.75 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+        .site-footer { padding: 26px 0; border-top: 1px solid #dce3ea; background: #e9eef3; color: #66768a; font-size: 12px; }
+        .footer-inner { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+        .footer-links { display: flex; gap: 16px; }
+        .footer-links a { text-decoration: none; }
+        .footer-links a:hover { color: var(--blue); }
+
+        @media (max-width: 820px) {
+            .shell { width: min(100% - 28px, 1180px); }
+            .header-inner { min-height: 62px; }
+            .brand-copy span { display: none; }
+            .main-nav { overflow-x: auto; }
+            .main-nav a { white-space: nowrap; padding: 8px 9px; }
+            .main-nav a:not(.admin-link):nth-of-type(n+3) { display: none; }
+            .hero-inner { padding: 42px 0 46px; }
+            .hero p { font-size: 14px; }
+            .quick-grid { grid-template-columns: 1fr; margin-top: 18px; }
+            .quick-card { min-height: 92px; padding: 16px; box-shadow: 0 8px 24px rgba(16,31,52,.07); }
+            .panel-head { align-items: stretch; flex-direction: column; padding: 20px; }
+            .search { width: 100%; }
+            main { padding-top: 22px; }
+            thead { display: none; }
+            table, tbody { display: block; }
+            tbody tr { display: grid; grid-template-columns: 1fr auto; gap: 10px 14px; padding: 16px; border-bottom: 1px solid var(--line); }
+            tbody tr:last-child { border-bottom: 0; }
+            td { display: block; padding: 0; border: 0; }
+            td[data-label="大小"] { padding-left: 53px; color: var(--muted); }
+            td[data-label="修改时间"] { display: none; }
+            td[data-label="操作"] { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+            .name-cell { min-width: 0; }
+        }
+        @media (max-width: 480px) {
+            .brand { width: 142px; transform: scale(.9); transform-origin: left center; }
+            .main-nav a { display: none; }
+            .hero h1 { font-size: 31px; }
+            .hero-meta { align-items: flex-start; flex-direction: column; }
+            .resource-panel { border-radius: 14px; }
+            .action-link { padding: 8px 10px; }
         }
     </style>
 </head>
 <body>
-    <nav class="nav">
-        <div class="nav-inner">
-            <a class="brand" href="/">{{.Site.LogoText}}</a>
-            <div class="nav-links">
+    <header class="site-header">
+        <div class="shell header-inner">
+            <a class="brand" href="/" aria-label="百问网资源中心首页">
+                <img src="https://www.100ask.net/_nuxt/logo.DC52TXxe.png" alt="百问网">
+            </a>
+            <nav class="main-nav" aria-label="主导航">
                 {{range .HeaderLinks}}<a href="{{.Href}}">{{.Text}}</a>{{end}}
-                <a href="/admin">后台管理</a>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="shell hero-inner">
+            <div class="eyebrow">100ASK OFFICIAL RESOURCES</div>
+            <h1>{{.PageHeading}}</h1>
+            <p>{{.IntroText}}</p>
+            <div class="hero-meta">
+                <span class="meta-chip">当前位置&nbsp; {{.DirDisplay}}</span>
+                <span class="meta-chip">{{len .Entries}} 项资源</span>
+                <span class="meta-chip">官方维护 · 持续更新</span>
             </div>
         </div>
-    </nav>
+    </section>
 
-    <div class="breadcrumb">
-        <div class="container">
-            <a href="/">首页</a>
-            {{range .Breadcrumbs}}<span>/</span>{{if .Current}}<strong>{{.Text}}</strong>{{else}}<a href="{{.Href}}">{{.Text}}</a>{{end}}{{end}}
-        </div>
+    {{if eq .DirDisplay "/"}}
+    <div class="shell quick-grid" aria-label="资源分类快捷入口">
+        <a class="quick-card" href="/Hardware/">
+            <span class="quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9zM9 1v4m6-4v4M9 19v4m6-4v4M1 9h4m-4 6h4m14-6h4m-4 6h4"/></svg></span>
+            <span class="quick-copy"><strong>硬件资料</strong><span>开发板镜像、原理图与数据手册</span></span>
+        </a>
+        <a class="quick-card" href="/Tools/">
+            <span class="quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 0 0-5 5L3 18l3 3 6.7-6.7a4 4 0 0 0 5-5l-2.4 2.4-3-3 2.4-2.4Z"/></svg></span>
+            <span class="quick-copy"><strong>开发工具</strong><span>烧录、调试与开发辅助软件</span></span>
+        </a>
+        <a class="quick-card" href="/Video/">
+            <span class="quick-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3V9Z"/></svg></span>
+            <span class="quick-copy"><strong>视频教程</strong><span>配套课程、操作演示与学习资料</span></span>
+        </a>
     </div>
+    {{end}}
 
-    <div class="container">
-        <section class="hero">
-            <div class="hero-card">
-                <h1>{{.PageHeading}}</h1>
-                <p>{{.IntroText}}</p>
-                <div class="meta">
-                    <span class="badge">目录：{{.DirDisplay}}</span>
-                    <span class="badge">共 {{len .Entries}} 项</span>
-                    <span class="badge">动态 Go 服务</span>
+    <main class="shell">
+        <nav class="breadcrumb" aria-label="面包屑导航">
+            <a href="/">资源首页</a>
+            {{range .Breadcrumbs}}<span class="separator">/</span>{{if .Current}}<strong>{{.Text}}</strong>{{else}}<a href="{{.Href}}">{{.Text}}</a>{{end}}{{end}}
+        </nav>
+
+        <section class="resource-panel" aria-labelledby="resource-title">
+            <div class="panel-head">
+                <div class="panel-title">
+                    <small>RESOURCE LIBRARY</small>
+                    <h2 id="resource-title">资源列表</h2>
+                    <p><span id="visibleCount">{{len .Entries}}</span> 项内容，目录优先显示</p>
                 </div>
+                <label class="search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+                    <input id="searchInput" type="search" placeholder="搜索当前目录" autocomplete="off" aria-controls="entryBody">
+                    <button id="clearSearch" class="clear-search" type="button" aria-label="清空搜索">×</button>
+                </label>
+            </div>
+
+            <div class="table-wrap">
+                <table id="entryTable">
+                    <thead>
+                        <tr>
+                            <th aria-sort="ascending"><button type="button" data-sort-key="name">名称 ↕</button></th>
+                            <th><button type="button" data-sort-key="size">大小 ↕</button></th>
+                            <th><button type="button" data-sort-key="time">更新时间 ↕</button></th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="entryBody">
+                        {{range .Entries}}
+                        <tr class="{{.Type}}" data-name="{{.NameLower}}" data-size="{{.SortSize}}" data-time="{{.SortTime}}">
+                            <td data-label="名称">
+                                <div class="name-cell">
+                                    <span class="entry-icon">
+                                        {{if eq .Type "dir"}}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 6.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V6.5Z"/></svg>
+                                        {{else}}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2.5h8l4 4V21H6z"/><path d="M14 2.5V7h4"/></svg>
+                                        {{end}}
+                                    </span>
+                                    <span class="entry-name"><a href="{{.Href}}">{{.Name}}</a><span class="entry-type">{{if eq .Type "dir"}}文件夹{{else}}文件{{end}}</span></span>
+                                </div>
+                            </td>
+                            <td data-label="大小">{{.SizeDisplay}}</td>
+                            <td data-label="修改时间">{{.ModifiedDisplay}}</td>
+                            <td data-label="操作">
+                                <a class="action-link" href="{{.Href}}">
+                                    {{if eq .Type "file"}}
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/></svg>下载
+                                    {{else}}
+                                    查看<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+                                    {{end}}
+                                </a>
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+                <div id="noResults" class="no-results">没有找到匹配的资源</div>
             </div>
         </section>
 
         {{if .Readme}}
         <section class="readme">
-            <h2>README</h2>
+            <h2>目录说明</h2>
             <pre>{{.Readme}}</pre>
         </section>
         {{end}}
+    </main>
 
-        <div class="toolbar">
-            <div class="badge">支持搜索和排序</div>
-            <input id="searchInput" type="text" placeholder="搜索文件名..." oninput="filterRows(this.value)">
-        </div>
-
-        <div class="table-wrap">
-            <table id="entryTable">
-                <thead>
-                    <tr>
-                        <th onclick="sortRows('name')">文件名</th>
-                        <th onclick="sortRows('size')">大小</th>
-                        <th onclick="sortRows('time')">修改时间</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody id="entryBody">
-                    {{range .Entries}}
-                    <tr class="{{.Type}}" data-name="{{.NameLower}}" data-size="{{.SortSize}}" data-time="{{.SortTime}}">
-                        <td>
-                            <div class="name-cell">
-                                <span class="icon">{{.Icon}}</span>
-                                <a href="{{.Href}}">{{.Name}}</a>
-                            </div>
-                        </td>
-                        <td>{{.SizeDisplay}}</td>
-                        <td>{{.ModifiedDisplay}}</td>
-                        <td>{{if eq .Type "file"}}<a class="dl" href="{{.Href}}">下载</a>{{else}}<a class="dl" href="{{.Href}}">打开</a>{{end}}</td>
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <footer class="footer">
-        <div class="container footer-inner">
+    <footer class="site-footer">
+        <div class="shell footer-inner">
             <div>{{.FooterCopyright}}</div>
-            <div>{{range .FooterLinks}}<a href="{{.Href}}">{{.Text}}</a>{{end}}</div>
+            <div class="footer-links">{{range .FooterLinks}}<a href="{{.Href}}">{{.Text}}</a>{{end}}</div>
         </div>
     </footer>
 
     <script>
-    let currentSort = { key: 'name', direction: 'asc' };
+    (() => {
+        const body = document.getElementById('entryBody');
+        const input = document.getElementById('searchInput');
+        const clear = document.getElementById('clearSearch');
+        const noResults = document.getElementById('noResults');
+        const visibleCount = document.getElementById('visibleCount');
+        let currentSort = { key: 'name', direction: 'asc' };
 
-    function filterRows(keyword) {
-        const term = String(keyword || '').toLowerCase().trim();
-        document.querySelectorAll('#entryBody tr').forEach(row => {
-            const show = !term || (row.dataset.name || '').includes(term);
-            row.classList.toggle('hidden', !show);
-        });
-    }
+        function filterRows() {
+            const term = input.value.toLocaleLowerCase().trim();
+            let count = 0;
+            body.querySelectorAll('tr').forEach((row) => {
+                const show = !term || (row.dataset.name || '').includes(term);
+                row.classList.toggle('is-hidden', !show);
+                if (show) count += 1;
+            });
+            visibleCount.textContent = String(count);
+            noResults.classList.toggle('visible', count === 0);
+            clear.classList.toggle('visible', term.length > 0);
+        }
 
-    function sortRows(key) {
-        const tbody = document.getElementById('entryBody');
-        const rows = Array.from(tbody.querySelectorAll('tr'));
-        let direction = 'asc';
-        if (currentSort.key === key && currentSort.direction === 'asc') direction = 'desc';
-        currentSort = { key, direction };
+        function sortRows(key) {
+            const direction = currentSort.key === key && currentSort.direction === 'asc' ? 'desc' : 'asc';
+            currentSort = { key, direction };
+            const rows = Array.from(body.querySelectorAll('tr'));
+            rows.sort((a, b) => {
+                const av = a.dataset[key] || '';
+                const bv = b.dataset[key] || '';
+                const result = key === 'name' ? av.localeCompare(bv, 'zh-CN') : (Number(av) || 0) - (Number(bv) || 0);
+                return direction === 'asc' ? result : -result;
+            });
+            rows.forEach((row) => body.appendChild(row));
+            document.querySelectorAll('th[aria-sort]').forEach((th) => th.removeAttribute('aria-sort'));
+            const active = document.querySelector(`[data-sort-key="${key}"]`);
+            if (active) active.closest('th').setAttribute('aria-sort', direction === 'asc' ? 'ascending' : 'descending');
+        }
 
-        rows.sort((a, b) => {
-            const av = a.dataset[key] || '';
-            const bv = b.dataset[key] || '';
-            if (key === 'size' || key === 'time') {
-                const na = Number(av) || 0;
-                const nb = Number(bv) || 0;
-                return direction === 'asc' ? na - nb : nb - na;
-            }
-            return direction === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
-        });
-        rows.forEach(row => tbody.appendChild(row));
-    }
+        input.addEventListener('input', filterRows);
+        clear.addEventListener('click', () => { input.value = ''; filterRows(); input.focus(); });
+        document.querySelectorAll('[data-sort-key]').forEach((button) => button.addEventListener('click', () => sortRows(button.dataset.sortKey)));
+    })();
     </script>
 </body>
 </html>

@@ -1,267 +1,78 @@
-# 部署说明
+# dl.100ask.net 上线与迁移
 
-本文档说明如何把本仓库部署为可用的下载站后台。
+## 1. 上线前
 
-默认示例环境：
+1. 备份当前下载目录、Nginx 配置和旧后台状态。
+2. 立即从公开根目录移走 `shell.sh`、部署脚本、源码和密钥。
+3. 保留现有 `/home1/dlfile`，建立私有 `/home1/dlfile-state`，两者必须同盘。
+4. 源码只同步到 `/home1/dladmin-code/current`，不得把源码、密钥、日志或数据库复制到 `/home1/dlfile`。
+5. 按 [GO部署说明.md](GO部署说明.md) 安装当前 Go 服务并配置发布公钥。
 
-- 域名：`dl.100ask.net`
-- 服务器目录：`/home1/dlfile`
-- 后台监听：`127.0.0.1:5000`
+## 2. Nginx
 
-## 0. 推荐方案
-
-当前推荐优先使用 Go 版：
-
-- 单文件运行
-- 不依赖 Python 运行时
-- 不依赖 Flask / Gunicorn
-- 支持后台登录、目录遍历、上传、新建目录、删除、配置编辑、访问统计
-
-Go 版相关文件：
-
-- `main.go`
-- `go.mod`
-- `web/`
-- `GO部署说明.md`
-- `dladmin-go.service`
-
-编译命令：
+安装 `deploy/nginx/dl-download-site.conf`，确认 TLS 证书路径后执行：
 
 ```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dladmin-go .
+sudo nginx -t
+sudo systemctl reload nginx
 ```
 
-Go 版专用说明：
+Nginx 只代理到 `127.0.0.1:5001`。不要再启用 fancyindex、PHP、旧 Flask/Gunicorn
+后台或第二套能直接写公开目录的上传接口。
 
-- [GO部署说明.md](./GO%E9%83%A8%E7%BD%B2%E8%AF%B4%E6%98%8E.md)
+## 3. 人工发布
 
-## 1. 上传代码
+后台地址为 `/admin`。在“版本发布”页同时选择 `release-set.json` 和全部资产。服务器完成
+结构、版本、大小、SHA-256 和 minisign 验证后只会标记为 `staged`；人工点击“确认发布”
+后才原子移动到公开的不可变目录。
 
-把本仓库代码上传到服务器目录，例如：
+普通“文件管理”不能覆盖或删除 `releases/`，避免绕过验签。
+
+## 4. SSH/SCP 与 GitHub Actions
+
+服务器端先验证一个发布集：
 
 ```bash
-/home1/dlfile
+DL_STATE_DIR=/home1/dlfile-state \
+DL_PUBLIC_DIR=/home1/dlfile \
+DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub \
+DL_RELEASE_ACTOR=admin \
+dlctl import ci-job-id
 ```
 
-然后再把你自己的资源目录上传进去，例如：
+审批后执行 `dlctl publish RELEASE_ID`。仓库内的 `scripts/publish-release.sh` 会先上传到
+`.part-*`，完整传输后再重命名，服务端不会读取半包。参考工作流：
+`docs/examples/publish-release.workflow.yml`。该文件不会在本仓库自动执行。
 
-- `Hardware/`
-- `Video/`
-- `Tools/`
-
-最终建议目录结构如下：
-
-```text
-/home1/dlfile/
-├── dladmin-go
-├── go.mod
-├── main.go
-├── web/
-├── admin_server.py
-├── generate_directory.py
-├── directory-template.html
-├── config.json
-├── requirements.txt
-├── gunicorn.conf.py
-├── wsgi.py
-├── .venv/
-├── Hardware/
-├── Video/
-├── Tools/
-├── index.html
-├── access_stats.json
-└── admin_auth.json
-```
-
-## 2. Go 版启动方式
-
-### 编译
+生产 SSH key 必须绑定受限命令；不要允许该 key 获得交互式 root shell。仓库提供的白名单包装器
+只接受创建 `.part-*`、旧式 SCP sink、同名原子移动和 `dlctl import` 四类固定命令：
 
 ```bash
-cd /home1/dlfile
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dladmin-go .
+sudo install -o root -g root -m 0755 deploy/ssh/dl-release-command \
+  /usr/local/libexec/dl-release-command
+sudo install -d -o root -g root -m 0700 /root/.ssh
+sudo sh -c 'printf "%s\n" \
+  "restrict,command=\"/usr/local/libexec/dl-release-command\" ssh-ed25519 AAAA... lynx-release-ci" \
+  >> /root/.ssh/authorized_keys'
+sudo chmod 0600 /root/.ssh/authorized_keys
 ```
 
-### 直接运行
+当 CI 复用现有 root SSH 入口时，这枚专用 key 必须保留 `restrict,command=...`
+限制，不得复用为交互登录 key。CI 使用 `scp -O`，forced-command 只开放可审计的
+SCP sink 和 `dlctl import`，不允许 SFTP 或任意 shell。
+
+自动发布默认关闭，只有明确设置 `DL_PUBLISH_NOW=true` 才会导入后立即发布。
+
+## 5. 回归检查
 
 ```bash
-cd /home1/dlfile
-chmod +x dladmin-go
-./dladmin-go
+go test ./...
+go vet ./...
+curl -fsS https://dl.100ask.net/
+curl -fsS https://dl.100ask.net/api/v1/updates/lynx/stable/windows-x86_64/0.9.0
+sudo systemctl status dladmin-go --no-pager
+sudo journalctl -u dladmin-go -n 100 --no-pager
 ```
 
-### systemd 常驻
-
-```bash
-cp /home1/dlfile/dladmin-go.service /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable dladmin-go
-systemctl restart dladmin-go
-systemctl status dladmin-go
-```
-
-## 3. Python 版临时启动方式
-
-只用于调试：
-
-```bash
-cd /home1/dlfile
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python3 generate_directory.py . -r
-python3 admin_server.py
-```
-
-## 4. Python 版生产环境方式
-
-生产环境不要长期直接运行：
-
-```bash
-python3 admin_server.py
-```
-
-推荐使用：
-
-- `Gunicorn`
-- `systemd`
-- `Nginx`
-
-### 一键可复制脚本
-
-```bash
-set -e
-
-APP_DIR="/home1/dlfile"
-VENV_DIR="$APP_DIR/.venv"
-SERVICE_NAME="dl-download-site"
-
-cd "$APP_DIR"
-test -f admin_server.py || { echo "错误：admin_server.py 不在 $APP_DIR"; exit 1; }
-
-python3 -m venv "$VENV_DIR"
-source "$VENV_DIR/bin/activate"
-pip install -U pip setuptools wheel
-
-if [ -f "$APP_DIR/requirements.txt" ]; then
-    pip install -r "$APP_DIR/requirements.txt"
-else
-    pip install flask gunicorn
-fi
-
-cat > "$APP_DIR/wsgi.py" <<'EOF'
-from admin_server import app
-EOF
-
-cat > "$APP_DIR/gunicorn.conf.py" <<'EOF'
-bind = "127.0.0.1:5000"
-workers = 2
-threads = 4
-timeout = 600
-accesslog = "-"
-errorlog = "-"
-capture_output = True
-EOF
-
-cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
-[Unit]
-Description=dl.100ask.net admin server
-After=network.target
-
-[Service]
-Type=simple
-User=root
-Group=root
-WorkingDirectory=$APP_DIR
-Environment=HOST=127.0.0.1
-Environment=PORT=5000
-Environment=DEBUG=false
-ExecStart=$VENV_DIR/bin/gunicorn -c $APP_DIR/gunicorn.conf.py wsgi:app
-Restart=always
-RestartSec=5
-TimeoutStopSec=20
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-pkill -f "python3 admin_server.py" || true
-pkill -f "gunicorn.*wsgi:app" || true
-
-systemctl daemon-reload
-systemctl enable "$SERVICE_NAME"
-systemctl restart "$SERVICE_NAME"
-systemctl status "$SERVICE_NAME" --no-pager
-```
-
-### 常用命令
-
-```bash
-systemctl start dl-download-site
-systemctl stop dl-download-site
-systemctl restart dl-download-site
-systemctl status dl-download-site
-journalctl -u dl-download-site -f
-```
-
-## 5. Nginx 配置
-
-Nginx 需要反代到：
-
-```text
-http://127.0.0.1:5000
-```
-
-核心配置：
-
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:5000;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header Connection "";
-    proxy_read_timeout 600s;
-    proxy_send_timeout 600s;
-    send_timeout 600s;
-    client_max_body_size 20G;
-    proxy_buffering off;
-}
-```
-
-完整示例：
-
-- `deploy/nginx/dl-download-site.conf`
-- `deploy/nginx/dl.100ask.net.baota.conf`
-
-## 6. 宝塔说明
-
-如果你使用宝塔：
-
-1. 不要使用 `fancyindex`
-2. 不要保留旧的 PHP 配置
-3. 不要保留旧的 `rewrite` 伪静态配置
-4. 所有请求统一反代到 `127.0.0.1:5000`
-
-同时，宝塔会校验 SSL 注释区块，这两行必须保留：
-
-- `#SSL-START SSL相关配置，请勿删除或修改下一行带注释的404规则`
-- `#error_page 404/404.html;`
-
-详细说明：
-
-- [宝塔Nginx面板部署说明](./deploy/%E5%AE%9D%E5%A1%94Nginx%E9%9D%A2%E6%9D%BF%E9%83%A8%E7%BD%B2%E8%AF%B4%E6%98%8E.md)
-
-## 7. 上线后检查
-
-建议逐项确认：
-
-1. `https://你的域名/` 可访问
-2. `https://你的域名/admin` 可登录
-3. 后台“文件管理”可以进入目录
-4. 上传文件后前台会自动显示
-5. 删除文件或目录后前台会同步刷新
-6. `systemctl status dladmin-go` 或 `systemctl status dl-download-site` 正常
-7. `nginx -t` 正常
+另外检查：错误密码限速、缺少 CSRF 的写请求被拒绝、非法签名无法暂存、旧版本无法覆盖
+新 channel head、增量不存在时返回 full、下载后二次计算 SHA-256/验签成功。

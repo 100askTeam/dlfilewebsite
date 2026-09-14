@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 027
+
+incoming=/home1/dlfile-state/incoming
+original=${SSH_ORIGINAL_COMMAND:-}
+normalized=${original//\'/}
+
+deny() {
+  echo "release SSH command denied" >&2
+  exit 126
+}
+
+if [[ "$normalized" =~ ^install\ -d\ -m\ 0750\ /home1/dlfile-state/incoming/\.part-([A-Za-z0-9][A-Za-z0-9._-]{0,119})$ ]]; then
+  [[ "$normalized" == "install -d -m 0750 $incoming/.part-${BASH_REMATCH[1]}" ]] || deny
+  exec /usr/bin/install -d -m 0750 "$incoming/.part-${BASH_REMATCH[1]}"
+fi
+
+if [[ "$normalized" =~ ^scp\ -p\ -t\ (/home1/dlfile-state/incoming/\.part-([A-Za-z0-9][A-Za-z0-9._-]{0,119})/?)$ ]]; then
+  [[ "$normalized" == "scp -p -t ${BASH_REMATCH[1]}" ]] || deny
+  exec /usr/bin/scp -p -t "${BASH_REMATCH[1]}"
+fi
+
+if [[ "$normalized" =~ ^mv\ /home1/dlfile-state/incoming/\.part-([A-Za-z0-9][A-Za-z0-9._-]{0,119})\ /home1/dlfile-state/incoming/([A-Za-z0-9][A-Za-z0-9._-]{0,119})$ ]]; then
+  [[ "$normalized" == "mv $incoming/.part-${BASH_REMATCH[1]} $incoming/${BASH_REMATCH[2]}" ]] || deny
+  [[ "${BASH_REMATCH[1]}" == "${BASH_REMATCH[2]}" ]] || deny
+  exec /usr/bin/mv "$incoming/.part-${BASH_REMATCH[1]}" "$incoming/${BASH_REMATCH[2]}"
+fi
+
+if [[ "$normalized" =~ ^/home1/dladmin-code/current/build/dlctl\ import(\ --publish)?\ ([A-Za-z0-9][A-Za-z0-9._-]{0,119})$ ]]; then
+	[[ "$normalized" == "/home1/dladmin-code/current/build/dlctl import${BASH_REMATCH[1]} ${BASH_REMATCH[2]}" ]] || deny
+	export DL_STATE_DIR=/home1/dlfile-state
+	export DL_PUBLIC_DIR=/home1/dlfile
+  export DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub
+  export DL_RELEASE_ACTOR=admin
+  if [[ -n "${BASH_REMATCH[1]}" ]]; then
+		exec /home1/dladmin-code/current/build/dlctl import --publish "${BASH_REMATCH[2]}"
+	fi
+	exec /home1/dladmin-code/current/build/dlctl import "${BASH_REMATCH[2]}"
+fi
+
+deny
