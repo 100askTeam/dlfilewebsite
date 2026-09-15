@@ -31,7 +31,7 @@ Nginx 只代理到 `127.0.0.1:5001`。不要再启用 fancyindex、PHP、旧 Fla
 人工资料仍可照常管理。
 
 旧版曾把正式资产写到根级 `/releases/<product>/...`。升级二进制后先保持服务运行，执行
-只读预检：
+迁移预检（不搬文件、不更新发布路径，只追加一条审计记录）：
 
 ```bash
 DL_STATE_DIR=/home1/dlfile-state \
