@@ -26,8 +26,6 @@ jobs:
         run: |
           bash -n deploy/ssh/dl-release-command
           bash deploy/ssh/dl-release-command --self-test
-          bash -n scripts/publish-release.sh
-          bash -n scripts/restore-release.sh
       - name: Build static Linux binaries
         env:
           CGO_ENABLED: '0'
