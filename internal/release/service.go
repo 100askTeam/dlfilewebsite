@@ -200,7 +200,7 @@ func (s *Service) Publish(ctx context.Context, id int64) (store.ReleaseRecord, e
 }
 
 // MigrateLegacyLayout moves previously published root-level releases into the
-// canonical /Tools/<product>/releases tree and updates each database record.
+// canonical /Tools/<product>/<channel>/<version> tree and updates each database record.
 // Run this with the web service stopped so file and metadata changes are not
 // observed halfway through the migration.
 func (s *Service) MigrateLegacyLayout(ctx context.Context, dryRun bool) ([]LayoutMigration, error) {
@@ -287,7 +287,7 @@ func (s *Service) MigrateLegacyLayout(ctx context.Context, dryRun bool) ([]Layou
 			return nil, fmt.Errorf("update release %d path: %w", record.ID, err)
 		}
 		migrations = append(migrations, migration)
-		removeEmptyLegacyParents(filepath.Dir(source), filepath.Join(s.publicDir, ReleaseDirectoryName))
+		removeEmptyLegacyParents(filepath.Dir(source), filepath.Join(s.publicDir, LegacyReleaseDirectoryName))
 	}
 	return migrations, nil
 }

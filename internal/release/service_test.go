@@ -102,12 +102,12 @@ func TestPublishUsesSameToolsContractForUSBToolBox(t *testing.T) {
 	if _, err := service.Publish(context.Background(), staged.ID); err != nil {
 		t.Fatal(err)
 	}
-	assetPath := filepath.Join(publicDir, "Tools", "usbtoolbox", "releases", "stable", "1.0.1", "USBToolBox_1.0.1_x64-setup.exe")
+	assetPath := filepath.Join(publicDir, "Tools", "usbtoolbox", "stable", "1.0.1", "USBToolBox_1.0.1_x64-setup.exe")
 	if _, err := os.Stat(assetPath); err != nil {
 		t.Fatal(err)
 	}
 	update, err := service.SelectUpdate(context.Background(), "usbtoolbox", "stable", "windows-x86_64", "1.0.0")
-	if err != nil || update.Asset == nil || update.Asset.URL != "/Tools/usbtoolbox/releases/stable/1.0.1/USBToolBox_1.0.1_x64-setup.exe" {
+	if err != nil || update.Asset == nil || update.Asset.URL != "/Tools/usbtoolbox/stable/1.0.1/USBToolBox_1.0.1_x64-setup.exe" {
 		t.Fatalf("unexpected USBToolBox update: %#v, %v", update, err)
 	}
 }
@@ -127,10 +127,10 @@ func TestImportPublishAndSelectExactDelta(t *testing.T) {
 	if err != nil || published.Status != "published" {
 		t.Fatalf("unexpected published release: %#v, %v", published, err)
 	}
-	if _, err := os.Stat(filepath.Join(publicDir, "Tools", "lynx", "releases", "stable", "0.9.1", ManifestName)); err != nil {
+	if _, err := os.Stat(filepath.Join(publicDir, "Tools", "lynx", "stable", "0.9.1", ManifestName)); err != nil {
 		t.Fatal(err)
 	}
-	assetInfo, err := os.Stat(filepath.Join(publicDir, "Tools", "lynx", "releases", "stable", "0.9.1", "lynx-full.exe"))
+	assetInfo, err := os.Stat(filepath.Join(publicDir, "Tools", "lynx", "stable", "0.9.1", "lynx-full.exe"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestImportPublishAndSelectExactDelta(t *testing.T) {
 	if err != nil || !update.Available || update.Strategy != "delta" || update.Fallback == nil {
 		t.Fatalf("unexpected delta selection: %#v, %v", update, err)
 	}
-	if update.Asset.URL != "/Tools/lynx/releases/stable/0.9.1/lynx-0.9.0-0.9.1.patch" {
+	if update.Asset.URL != "/Tools/lynx/stable/0.9.1/lynx-0.9.0-0.9.1.patch" {
 		t.Fatalf("unexpected asset URL: %s", update.Asset.URL)
 	}
 	update, err = service.SelectUpdate(context.Background(), "lynx", "stable", "windows-x86_64", "0.8.9")
@@ -205,7 +205,7 @@ func TestMigrateLegacyLayoutMovesFilesAndMetadata(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(canonicalDirectory, ManifestName)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(publicDir, ReleaseDirectoryName)); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(publicDir, LegacyReleaseDirectoryName)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("legacy root should be removed when empty: %v", err)
 	}
 	head, err := storage.ChannelHead(context.Background(), "lynx", "stable")

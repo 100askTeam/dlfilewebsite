@@ -6,7 +6,7 @@
 非公开的 `incoming` 暂存区，并必须经过同一套摘要、签名、结构和版本校验后才能发布。
 
 ```text
-后台 / CI / SCP -> incoming -> verify -> staged -> approve -> Tools/<product>/releases
+后台 / CI / SCP -> incoming -> verify -> staged -> approve -> Tools/<product>/<channel>/<version>
                                                         |-> dl.100ask.net
                                                         `-> GitHub mirror
 ```
@@ -14,7 +14,7 @@
 公开文件与运行状态必须分离：
 
 ```text
-DL_PUBLIC_DIR/Tools/<product>/releases/<channel>/<version>/
+DL_PUBLIC_DIR/Tools/<product>/<channel>/<version>/
                                 # Nginx 可读的签名不可变资产
 DL_STATE_DIR/dladmin.db         # 用户、会话、审计和发布元数据
 DL_STATE_DIR/incoming/          # 永不由 Nginx 公开

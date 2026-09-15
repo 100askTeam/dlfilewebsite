@@ -63,11 +63,11 @@ DL_RELEASE_PUBLIC_KEY_FILE=./release.pub dlctl verify ./release-set
 审批发布后，同一发布集的清单、完整安装包、增量包及其他声明资产全部落在：
 
 ```text
-/Tools/<product>/releases/<channel>/<version>/
+/Tools/<product>/<channel>/<version>/
 ```
 
-例如 LYNX v0.9.1 使用 `/Tools/lynx/releases/stable/0.9.1/`；USBToolBox v1.0.1
-使用 `/Tools/usbtoolbox/releases/stable/1.0.1/`。站点根级 `/releases` 不存放资产。
+例如 LYNX v0.9.1 使用 `/Tools/lynx/stable/0.9.1/`；USBToolBox v1.0.1
+使用 `/Tools/usbtoolbox/stable/1.0.1/`。站点根级 `/releases` 不存放资产。
 
 更新查询：
 

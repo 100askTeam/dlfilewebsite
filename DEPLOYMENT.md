@@ -26,8 +26,8 @@ Nginx 只代理到 `127.0.0.1:5001`。不要再启用 fancyindex、PHP、旧 Fla
 结构、版本、大小、SHA-256 和 minisign 验证后只会标记为 `staged`；人工点击“确认发布”
 后才原子移动到公开的不可变目录。
 
-正式资产固定发布到 `/Tools/<product>/releases/<channel>/<version>/`。普通“文件管理”
-不能覆盖或删除任何产品的 `releases/` 子树，避免绕过验签；`/Tools/<product>/` 下其他
+正式资产固定发布到 `/Tools/<product>/<channel>/<version>/`。普通“文件管理”
+不能覆盖或删除任何产品的 `stable/`、`beta/`、`nightly/` 子树，避免绕过验签；`/Tools/<product>/` 下其他
 人工资料仍可照常管理。
 
 旧版曾把正式资产写到根级 `/releases/<product>/...`。升级二进制后先保持服务运行，执行

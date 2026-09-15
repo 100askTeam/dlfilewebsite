@@ -10,13 +10,13 @@ API 与公开目录，发布后不得仅因显示名称变化而修改。
 
 | 软件显示名 | product slug | 正式目录前缀 |
 | --- | --- | --- |
-| LYNX | `lynx` | `/Tools/lynx/releases/` |
-| USBToolBox | `usbtoolbox` | `/Tools/usbtoolbox/releases/` |
+| LYNX | `lynx` | `/Tools/lynx/` |
+| USBToolBox | `usbtoolbox` | `/Tools/usbtoolbox/` |
 
 ## 2. 唯一公开目录
 
 ```text
-/Tools/<product>/releases/<channel>/<version>/
+/Tools/<product>/<channel>/<version>/
 ├── release-set.json
 ├── <full installer or updater>
 └── <optional exact-version delta>
@@ -25,7 +25,7 @@ API 与公开目录，发布后不得仅因显示名称变化而修改。
 - `channel` 只能是 `stable`、`beta` 或 `nightly`。
 - `version` 是不带 `v` 的语义版本；目录发布后不可覆盖。
 - 安装包、升级完整包、增量包和清单必须在同一个版本目录内。
-- `/Tools/<product>/` 可继续放人工资料，但 `releases/` 子树只能由发布服务写入。
+- `/Tools/<product>/` 可继续放人工资料，但 `stable/`、`beta/`、`nightly/` 子树只能由发布服务写入。
 - 根级 `/releases/` 已废弃，只提供 308 跳转，不得保留真实文件。
 
 ## 3. 产品仓库职责

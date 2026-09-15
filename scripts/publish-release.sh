@@ -87,7 +87,7 @@ ssh "$remote" "mv '$remote_incoming/.part-$job_id' '$remote_incoming/$job_id'"
 
 if [[ "$publish_now" == "true" ]]; then
   ssh "$remote" "$remote_dlctl import --publish '$job_id'"
-  echo "published: $public_base_url/Tools/$product/releases/$channel/$version/"
+  echo "published: $public_base_url/Tools/$product/$channel/$version/"
 else
   ssh "$remote" "$remote_dlctl import '$job_id'"
 fi
