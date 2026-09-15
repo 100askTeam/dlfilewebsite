@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Upload and stage a prebuilt release set
-        uses: 100askTeam/dlfilewebsite/.github/actions/publish-release@release-publisher-v1
+        uses: 100askTeam/dlfilewebsite/.github/actions/publish-release@release-publisher-v2
         with:
           release-directory: dist/release-set
           remote: ${{ secrets.DL_SSH_REMOTE }}

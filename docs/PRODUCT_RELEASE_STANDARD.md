@@ -32,7 +32,7 @@ API 与公开目录，发布后不得仅因显示名称变化而修改。
 
 产品仓库负责构建资产、生成 SHA-256、使用受保护的 minisign/Tauri 私钥签名，并生成
 schema 1 的 `release-set.json`。流水线把清单声明的文件交给通用
-`100askTeam/dlfilewebsite/.github/actions/publish-release@release-publisher-v1`；不得自行 SCP
+`100askTeam/dlfilewebsite/.github/actions/publish-release@release-publisher-v2`；不得自行 SCP
 到公开目录，也不得自己拼服务器目标路径。该 Action 先校验产品无关的
 `release-channel-probe-v2`，再调用统一上传器。
 
