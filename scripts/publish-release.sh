@@ -82,7 +82,25 @@ if [[ ! "$job_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
 fi
 
 ssh "$remote" "install -d -m 0750 '$remote_incoming/.part-$job_id'"
-scp -O -p "${upload_files[@]}" "$remote:$remote_incoming/.part-$job_id/"
+# A multi-source SCP adds a remote `-d` flag, which the least-privilege
+# forced-command intentionally rejects. Upload each immutable file separately
+# and retry transport failures without weakening the remote parser.
+for upload_file in "${upload_files[@]}"; do
+  uploaded=false
+  for attempt in 1 2 3; do
+    if scp -O -p -o BatchMode=yes -o IdentitiesOnly=yes \
+      -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+      "$upload_file" "$remote:$remote_incoming/.part-$job_id/"; then
+      uploaded=true
+      break
+    fi
+    echo "SCP attempt $attempt failed for $(basename "$upload_file"); retrying" >&2
+  done
+  if [[ "$uploaded" != true ]]; then
+    echo "failed to upload $(basename "$upload_file") after 3 attempts" >&2
+    exit 1
+  fi
+done
 ssh "$remote" "mv '$remote_incoming/.part-$job_id' '$remote_incoming/$job_id'"
 
 if [[ "$publish_now" == "true" ]]; then
