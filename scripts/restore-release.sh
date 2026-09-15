@@ -98,20 +98,25 @@ fi
 
 ssh -o BatchMode=yes -o IdentitiesOnly=yes "$remote" \
   "install -d -m 0750 '$remote_incoming/.part-$job_id'"
-uploaded=false
-for attempt in 1 2 3; do
-  if scp -O -p -o BatchMode=yes -o IdentitiesOnly=yes \
-    -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
-    "${upload_files[@]}" "$remote:$remote_incoming/.part-$job_id/"; then
-    uploaded=true
-    break
+# Upload one file per SCP process. OpenSSH adds a remote `-d` flag for a
+# multi-source transfer; keeping each transfer singular preserves the narrow
+# forced-command contract and avoids retransmitting already completed assets.
+for upload_file in "${upload_files[@]}"; do
+  uploaded=false
+  for attempt in 1 2 3; do
+    if scp -O -p -o BatchMode=yes -o IdentitiesOnly=yes \
+      -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+      "$upload_file" "$remote:$remote_incoming/.part-$job_id/"; then
+      uploaded=true
+      break
+    fi
+    echo "SCP attempt $attempt failed for $(basename "$upload_file"); retrying" >&2
+  done
+  if [[ "$uploaded" != true ]]; then
+    echo "failed to upload $(basename "$upload_file") after 3 attempts" >&2
+    exit 1
   fi
-  echo "SCP attempt $attempt failed; retrying the same private partial directory" >&2
 done
-if [[ "$uploaded" != true ]]; then
-  echo "failed to upload the verified release set after 3 attempts" >&2
-  exit 1
-fi
 ssh -o BatchMode=yes -o IdentitiesOnly=yes "$remote" \
   "mv '$remote_incoming/.part-$job_id' '$remote_incoming/$job_id'"
 ssh -o BatchMode=yes -o IdentitiesOnly=yes "$remote" \
