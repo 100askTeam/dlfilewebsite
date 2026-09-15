@@ -14,6 +14,7 @@
 - 私有 `incoming`、签名清单校验、二次验签、不可变版本目录；
 - 人工后台上传，或 GitHub Actions + SSH/SCP 自动导入；
 - GitHub Runner 验签中转并原子恢复数据库中已有但公开文件丢失的版本；
+- `product` 到 minisign 公钥的一对一绑定，不同软件不能互用发布签名；
 - 任意已注册产品的精确版本增量选择，不能增量时强制返回完整安装包；
 - Tauri 更新请求可用 `X-Update-Mode: full` 显式取得签名完整包恢复路径；
 - `dl.100ask.net` 主下载地址及最多四个 HTTPS 镜像地址。
@@ -60,12 +61,13 @@ export DL_PUBLIC_DIR=/home1/dlfile
 export DL_STATE_DIR=/home1/dlfile-state
 export DL_ADMIN_USERNAME=admin
 export DL_ADMIN_PASSWORD='replace-with-a-unique-password'
-export DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub
+export DL_RELEASE_PUBLIC_KEYS_DIR=/etc/dladmin/release-keys
 /home1/dladmin-code/current/build/dladmin-go
 ```
 
 程序没有默认密码。首次成功启动并写入管理员后，从环境文件中删除
-`DL_ADMIN_PASSWORD`。签名私钥只保存在发布机/GitHub Secrets，下载服务器只保存公钥。
+`DL_ADMIN_PASSWORD`。公钥目录以 `<product>.pub` 命名，例如 `lynx.pub` 和
+`usbtoolbox.pub`；签名私钥只保存在发布机/GitHub Secrets，下载服务器只保存公钥。
 
 完整上线流程见 [DEPLOYMENT.md](DEPLOYMENT.md)，发布清单格式见
 [docs/RELEASE_FORMAT.md](docs/RELEASE_FORMAT.md)，跨产品目录与流水线规范见

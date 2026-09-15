@@ -18,10 +18,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
       - name: Test
         run: go test ./...
       - name: Vet
         run: go vet ./...
+      - name: Test product-neutral Tauri release preparation
+        run: node --test scripts/prepare_tauri_release_test.mjs
       - name: Verify restricted release command
         run: |
           bash -n deploy/ssh/dl-release-command

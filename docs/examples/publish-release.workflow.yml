@@ -10,8 +10,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Build a product-neutral release set from Tauri assets
+        uses: 100askTeam/dlfilewebsite/.github/actions/prepare-tauri-release@FULL_COMMIT_SHA
+        with:
+          source-directory: dist/tauri-release
+          output-directory: dist/release-set
+          product: usbtoolbox
+          channel: stable
+          release-repository: dshanpi/DshanPI_USBToolBox
+          public-key-file: deploy/release-keys/usbtoolbox.pub
       - name: Upload and stage a prebuilt release set
-        uses: 100askTeam/dlfilewebsite/.github/actions/publish-release@release-publisher-v2
+        uses: 100askTeam/dlfilewebsite/.github/actions/publish-release@FULL_COMMIT_SHA
         with:
           release-directory: dist/release-set
           remote: ${{ secrets.DL_SSH_REMOTE }}

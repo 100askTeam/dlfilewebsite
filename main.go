@@ -378,19 +378,14 @@ func newApp(baseDir string) (*App, error) {
 		cookieSecure:      !strings.EqualFold(strings.TrimSpace(os.Getenv("DL_COOKIE_SECURE")), "false"),
 		dummyPasswordHash: dummyPasswordHash,
 	}
-	releaseKey := strings.TrimSpace(os.Getenv("DL_RELEASE_PUBLIC_KEY"))
-	if keyFile := strings.TrimSpace(os.Getenv("DL_RELEASE_PUBLIC_KEY_FILE")); keyFile != "" {
-		keyBytes, readErr := os.ReadFile(keyFile)
-		if readErr != nil {
-			_ = database.Close()
-			return nil, fmt.Errorf("读取发布签名公钥失败: %w", readErr)
-		}
-		releaseKey = string(keyBytes)
-	}
-	if releaseKey == "" {
-		app.releaseConfigErr = "未配置 DL_RELEASE_PUBLIC_KEY 或 DL_RELEASE_PUBLIC_KEY_FILE"
+	keyring, keyringErr := release.LoadConfiguredPublicKeyring()
+	if errors.Is(keyringErr, release.ErrPublicKeyNotConfigured) {
+		app.releaseConfigErr = "未配置 DL_RELEASE_PUBLIC_KEYS_DIR 或兼容的 LYNX 发布公钥"
+	} else if keyringErr != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("读取产品发布签名公钥失败: %w", keyringErr)
 	} else {
-		app.releases, err = release.NewService(database, stateDir, baseDir, releaseKey)
+		app.releases, err = release.NewServiceWithKeyring(database, stateDir, baseDir, keyring)
 		if err != nil {
 			_ = database.Close()
 			return nil, fmt.Errorf("初始化发布服务失败: %w", err)

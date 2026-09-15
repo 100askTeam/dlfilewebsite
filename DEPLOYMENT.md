@@ -8,6 +8,16 @@
 4. 源码只同步到 `/home1/dladmin-code/current`，不得把源码、密钥、日志或数据库复制到 `/home1/dlfile`。
 5. 按 [GO部署说明.md](GO部署说明.md) 安装当前 Go 服务并配置发布公钥。
 
+每个产品使用独立公钥文件。迁移已有 LYNX key 后再登记其他产品：
+
+```bash
+sudo install -d -o root -g root -m 0755 /etc/dladmin/release-keys
+sudo install -o root -g root -m 0644 /etc/dladmin/release.pub \
+  /etc/dladmin/release-keys/lynx.pub
+sudo install -o root -g root -m 0644 ./usbtoolbox.pub \
+  /etc/dladmin/release-keys/usbtoolbox.pub
+```
+
 ## 2. Nginx
 
 安装 `deploy/nginx/dl-download-site.conf`，确认 TLS 证书路径后执行：
@@ -36,7 +46,7 @@ Nginx 只代理到 `127.0.0.1:5001`。不要再启用 fancyindex、PHP、旧 Fla
 ```bash
 DL_STATE_DIR=/home1/dlfile-state \
 DL_PUBLIC_DIR=/home1/dlfile \
-DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub \
+DL_RELEASE_PUBLIC_KEYS_DIR=/etc/dladmin/release-keys \
 DL_RELEASE_ACTOR=admin \
 /home1/dladmin-code/current/build/dlctl migrate-tools-layout --dry-run
 ```
@@ -46,7 +56,7 @@ DL_RELEASE_ACTOR=admin \
 ```bash
 DL_STATE_DIR=/home1/dlfile-state \
 DL_PUBLIC_DIR=/home1/dlfile \
-DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub \
+DL_RELEASE_PUBLIC_KEYS_DIR=/etc/dladmin/release-keys \
 DL_RELEASE_ACTOR=admin \
 /home1/dladmin-code/current/build/dlctl migrate-tools-layout
 ```
@@ -61,7 +71,7 @@ DL_RELEASE_ACTOR=admin \
 ```bash
 DL_STATE_DIR=/home1/dlfile-state \
 DL_PUBLIC_DIR=/home1/dlfile \
-DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub \
+DL_RELEASE_PUBLIC_KEYS_DIR=/etc/dladmin/release-keys \
 DL_RELEASE_ACTOR=admin \
 dlctl import ci-job-id
 ```
@@ -125,7 +135,7 @@ incoming，再由受限通道运行：
 ```bash
 DL_STATE_DIR=/home1/dlfile-state \
 DL_PUBLIC_DIR=/home1/dlfile \
-DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub \
+DL_RELEASE_PUBLIC_KEYS_DIR=/etc/dladmin/release-keys \
 DL_RELEASE_ACTOR=admin \
 /home1/dladmin-code/current/build/dlctl restore-published recover-job-id
 ```

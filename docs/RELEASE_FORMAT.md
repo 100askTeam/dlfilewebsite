@@ -57,7 +57,9 @@ release-set/
 服务端校验：
 
 ```bash
-DL_RELEASE_PUBLIC_KEY_FILE=./release.pub dlctl verify ./release-set
+install -d ./release-keys
+install -m 0644 ./release.pub ./release-keys/lynx.pub
+DL_RELEASE_PUBLIC_KEYS_DIR=./release-keys dlctl verify ./release-set
 ```
 
 审批发布后，同一发布集的清单、完整安装包、增量包及其他声明资产全部落在：

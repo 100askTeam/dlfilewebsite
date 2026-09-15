@@ -12,7 +12,7 @@ Environment=HOST=127.0.0.1
 Environment=PORT=5001
 Environment=DL_PUBLIC_DIR=/home1/dlfile
 Environment=DL_STATE_DIR=/home1/dlfile-state
-Environment=DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub
+Environment=DL_RELEASE_PUBLIC_KEYS_DIR=/etc/dladmin/release-keys
 Environment=DL_PUBLIC_BASE_URL=https://dl.100ask.net
 EnvironmentFile=-/home1/dlfile-state/dladmin.env
 ExecStart=/home1/dladmin-code/current/build/dladmin-go

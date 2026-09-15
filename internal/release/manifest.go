@@ -120,6 +120,16 @@ func DecodePublicKey(value string) (minisign.PublicKey, error) {
 }
 
 func LoadAndVerify(directory string, publicKey minisign.PublicKey) (Manifest, error) {
+	return loadAndVerify(directory, func(string) (minisign.PublicKey, error) {
+		return publicKey, nil
+	})
+}
+
+func LoadAndVerifyWithKeyring(directory string, keyring *PublicKeyring) (Manifest, error) {
+	return loadAndVerify(directory, keyring.KeyFor)
+}
+
+func loadAndVerify(directory string, resolveKey func(string) (minisign.PublicKey, error)) (Manifest, error) {
 	root, err := filepath.Abs(directory)
 	if err != nil {
 		return Manifest{}, err
@@ -144,6 +154,10 @@ func LoadAndVerify(directory string, publicKey minisign.PublicKey) (Manifest, er
 		return Manifest{}, fmt.Errorf("decode release manifest: %w", err)
 	}
 	if err := validateManifest(manifest); err != nil {
+		return Manifest{}, err
+	}
+	publicKey, err := resolveKey(manifest.Product)
+	if err != nil {
 		return Manifest{}, err
 	}
 	if err := validateDirectoryContents(root, manifest); err != nil {

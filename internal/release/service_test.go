@@ -45,7 +45,14 @@ func newReleaseServiceFixture(t *testing.T) (*Service, *store.Store, minisign.Pr
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := NewService(storage, stateDir, publicDir, string(keyText))
+	keyring, err := NewPublicKeyring(map[string]string{
+		"lynx":       string(keyText),
+		"usbtoolbox": string(keyText),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewServiceWithKeyring(storage, stateDir, publicDir, keyring)
 	if err != nil {
 		t.Fatal(err)
 	}

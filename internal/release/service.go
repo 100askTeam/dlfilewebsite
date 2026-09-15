@@ -10,8 +10,6 @@ import (
 	"regexp"
 	"strings"
 
-	"aead.dev/minisign"
-
 	"dladmin-go/internal/store"
 )
 
@@ -23,7 +21,7 @@ type Service struct {
 	publicDir   string
 	incomingDir string
 	stagedDir   string
-	publicKey   minisign.PublicKey
+	publicKeys  *PublicKeyring
 }
 
 type SelectedUpdate struct {
@@ -53,13 +51,21 @@ type LayoutMigration struct {
 }
 
 func NewService(storage *store.Store, stateDir, publicDir, publicKeyText string) (*Service, error) {
-	if storage == nil {
-		return nil, errors.New("release store is required")
-	}
-	key, err := DecodePublicKey(publicKeyText)
+	keyring, err := NewPublicKeyring(map[string]string{"lynx": publicKeyText})
 	if err != nil {
 		return nil, err
 	}
+	return NewServiceWithKeyring(storage, stateDir, publicDir, keyring)
+}
+
+func NewServiceWithKeyring(storage *store.Store, stateDir, publicDir string, keyring *PublicKeyring) (*Service, error) {
+	if storage == nil {
+		return nil, errors.New("release store is required")
+	}
+	if keyring == nil {
+		return nil, ErrPublicKeyNotConfigured
+	}
+	var err error
 	stateDir, err = filepath.Abs(stateDir)
 	if err != nil {
 		return nil, err
@@ -69,7 +75,7 @@ func NewService(storage *store.Store, stateDir, publicDir, publicKeyText string)
 		return nil, err
 	}
 	service := &Service{
-		store: storage, stateDir: stateDir, publicDir: publicDir, publicKey: key,
+		store: storage, stateDir: stateDir, publicDir: publicDir, publicKeys: keyring,
 		incomingDir: filepath.Join(stateDir, "incoming"),
 		stagedDir:   filepath.Join(stateDir, "staged"),
 	}
@@ -94,7 +100,7 @@ func (s *Service) ImportIncoming(ctx context.Context, incomingID string, actorID
 	if err := requireRealDirectory(source); err != nil {
 		return store.ReleaseRecord{}, err
 	}
-	manifest, err := LoadAndVerify(source, s.publicKey)
+	manifest, err := LoadAndVerifyWithKeyring(source, s.publicKeys)
 	if err != nil {
 		return store.ReleaseRecord{}, err
 	}
@@ -166,7 +172,7 @@ func (s *Service) Publish(ctx context.Context, id int64) (store.ReleaseRecord, e
 	if err := requireRealDirectory(source); err != nil {
 		return store.ReleaseRecord{}, err
 	}
-	manifest, err := LoadAndVerify(source, s.publicKey)
+	manifest, err := LoadAndVerifyWithKeyring(source, s.publicKeys)
 	if err != nil {
 		return store.ReleaseRecord{}, fmt.Errorf("revalidate staged release: %w", err)
 	}
@@ -210,7 +216,7 @@ func (s *Service) RestorePublished(ctx context.Context, incomingID string) (stor
 	if err := requireRealDirectory(source); err != nil {
 		return store.ReleaseRecord{}, err
 	}
-	manifest, err := LoadAndVerify(source, s.publicKey)
+	manifest, err := LoadAndVerifyWithKeyring(source, s.publicKeys)
 	if err != nil {
 		return store.ReleaseRecord{}, err
 	}
@@ -335,7 +341,7 @@ func (s *Service) MigrateLegacyLayout(ctx context.Context, dryRun bool) ([]Layou
 		if sourceExists {
 			verifyDirectory = source
 		}
-		if _, err := LoadAndVerify(verifyDirectory, s.publicKey); err != nil {
+		if _, err := LoadAndVerifyWithKeyring(verifyDirectory, s.publicKeys); err != nil {
 			return nil, fmt.Errorf("verify release %d before migration: %w", record.ID, err)
 		}
 		migration := LayoutMigration{ReleaseID: record.ID, From: from, To: to}

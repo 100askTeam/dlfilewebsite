@@ -160,7 +160,7 @@ case "$parsed_action" in
   import | import-publish)
     export DL_STATE_DIR=/home1/dlfile-state
     export DL_PUBLIC_DIR=/home1/dlfile
-    export DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub
+    export DL_RELEASE_PUBLIC_KEYS_DIR=/etc/dladmin/release-keys
     export DL_RELEASE_ACTOR=admin
     if [[ "$parsed_action" == import-publish ]]; then
       exec "$dlctl" import --publish "$parsed_arg1"
@@ -170,7 +170,7 @@ case "$parsed_action" in
   restore-published)
     export DL_STATE_DIR=/home1/dlfile-state
     export DL_PUBLIC_DIR=/home1/dlfile
-    export DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub
+    export DL_RELEASE_PUBLIC_KEYS_DIR=/etc/dladmin/release-keys
     export DL_RELEASE_ACTOR=admin
     exec "$dlctl" restore-published "$parsed_arg1"
     ;;

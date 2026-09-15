@@ -31,15 +31,11 @@ func run(args []string) error {
 		if len(args) != 2 {
 			return usageError()
 		}
-		keyText, err := readPublicKey()
+		keyring, err := release.LoadConfiguredPublicKeyring()
 		if err != nil {
 			return err
 		}
-		key, err := release.DecodePublicKey(keyText)
-		if err != nil {
-			return err
-		}
-		manifest, err := release.LoadAndVerify(args[1], key)
+		manifest, err := release.LoadAndVerifyWithKeyring(args[1], keyring)
 		if err != nil {
 			return err
 		}
@@ -172,12 +168,12 @@ func openService() (*release.Service, *store.Store, int64, error) {
 		_ = storage.Close()
 		return nil, nil, 0, fmt.Errorf("release actor %q cannot publish", actor)
 	}
-	keyText, err := readPublicKey()
+	keyring, err := release.LoadConfiguredPublicKeyring()
 	if err != nil {
 		_ = storage.Close()
 		return nil, nil, 0, err
 	}
-	service, err := release.NewService(storage, stateDir, publicDir, keyText)
+	service, err := release.NewServiceWithKeyring(storage, stateDir, publicDir, keyring)
 	if err != nil {
 		_ = storage.Close()
 		return nil, nil, 0, err
@@ -191,17 +187,6 @@ func openStore() (*store.Store, error) {
 		return nil, errors.New("DL_STATE_DIR is required")
 	}
 	return store.Open(filepath.Join(stateDir, "dladmin.db"))
-}
-
-func readPublicKey() (string, error) {
-	if file := strings.TrimSpace(os.Getenv("DL_RELEASE_PUBLIC_KEY_FILE")); file != "" {
-		data, err := os.ReadFile(file)
-		if err != nil {
-			return "", fmt.Errorf("read DL_RELEASE_PUBLIC_KEY_FILE: %w", err)
-		}
-		return string(data), nil
-	}
-	return strings.TrimSpace(os.Getenv("DL_RELEASE_PUBLIC_KEY")), nil
 }
 
 func printJSON(value any) error {

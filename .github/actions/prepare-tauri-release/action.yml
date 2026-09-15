@@ -1,0 +1,54 @@
+name: Prepare signed Tauri release set
+description: Convert verified Tauri updater assets into the product-neutral schema 1 release set
+inputs:
+  source-directory:
+    description: Directory containing latest.json and every referenced updater asset
+    required: true
+  output-directory:
+    description: New directory that will contain only release-set.json and its unique assets
+    required: true
+  product:
+    description: Registered lowercase product slug
+    required: true
+  channel:
+    description: stable, beta, or nightly
+    required: true
+  release-repository:
+    description: GitHub owner/repository used by updater mirror URLs
+    required: true
+  public-key-file:
+    description: Repository file containing this product's minisign public key
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Generate product-neutral release set
+      shell: bash
+      env:
+        DL_PREPARE_SOURCE: ${{ inputs.source-directory }}
+        DL_PREPARE_OUTPUT: ${{ inputs.output-directory }}
+        DL_PREPARE_PRODUCT: ${{ inputs.product }}
+        DL_PREPARE_CHANNEL: ${{ inputs.channel }}
+        DL_PREPARE_REPOSITORY: ${{ inputs.release-repository }}
+      run: |
+        set -euo pipefail
+        node "$GITHUB_ACTION_PATH/../../../scripts/prepare-tauri-release.mjs" \
+          "$DL_PREPARE_SOURCE" "$DL_PREPARE_OUTPUT" "$DL_PREPARE_PRODUCT" \
+          "$DL_PREPARE_CHANNEL" "$DL_PREPARE_REPOSITORY"
+
+    - name: Verify every signed release asset
+      shell: bash
+      env:
+        DL_PREPARE_OUTPUT: ${{ inputs.output-directory }}
+        DL_PREPARE_PRODUCT: ${{ inputs.product }}
+        DL_PREPARE_PUBLIC_KEY: ${{ inputs.public-key-file }}
+      run: |
+        set -euo pipefail
+        key_dir="$(mktemp -d)"
+        trap 'rm -rf "$key_dir"' EXIT
+        install -m 0640 "$DL_PREPARE_PUBLIC_KEY" "$key_dir/$DL_PREPARE_PRODUCT.pub"
+        (
+          cd "$GITHUB_ACTION_PATH/../../.."
+          DL_RELEASE_PUBLIC_KEYS_DIR="$key_dir" \
+            go run ./cmd/dlctl verify "$GITHUB_WORKSPACE/$DL_PREPARE_OUTPUT" >/dev/null
+        )
