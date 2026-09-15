@@ -6,6 +6,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -21,15 +22,50 @@ function requireValue(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function releaseFileFromURL(value, repository, tag) {
+function signatureFiles(source) {
+  const result = new Map();
+  for (const name of readdirSync(source)) {
+    if (!name.endsWith('.sig')) continue;
+    const file = name.slice(0, -4);
+    const filePath = join(source, file);
+    const signaturePath = join(source, name);
+    if (!existsSync(filePath) || !statSync(filePath).isFile() || !statSync(signaturePath).isFile()) {
+      continue;
+    }
+    const signature = readFileSync(signaturePath, 'utf8').trim();
+    const matches = result.get(signature) || [];
+    matches.push(file);
+    result.set(signature, matches);
+  }
+  return result;
+}
+
+function releaseFileFromURL(value, repository, tag, signatures, signature) {
   const url = new URL(value);
   requireValue(url.protocol === 'https:', `Updater URL must use HTTPS: ${value}`);
   requireValue(url.username === '' && url.password === '' && url.hash === '', `Unsafe updater URL: ${value}`);
   const prefix = `/${repository}/releases/download/${encodeURIComponent(tag)}/`;
-  requireValue(url.hostname === 'github.com' && url.pathname.startsWith(prefix), `Updater URL is outside ${repository} ${tag}: ${value}`);
-  const encodedName = url.pathname.slice(prefix.length);
-  requireValue(encodedName && !encodedName.includes('/'), `Updater URL has an invalid filename: ${value}`);
-  const name = decodeURIComponent(encodedName);
+  let name;
+  if (url.hostname === 'github.com' && url.pathname.startsWith(prefix)) {
+    const encodedName = url.pathname.slice(prefix.length);
+    requireValue(encodedName && !encodedName.includes('/'), `Updater URL has an invalid filename: ${value}`);
+    name = decodeURIComponent(encodedName);
+  } else {
+    const apiPrefix = `/repos/${repository}/releases/assets/`;
+    const assetId = url.pathname.slice(apiPrefix.length);
+    requireValue(
+      url.hostname === 'api.github.com' &&
+        url.pathname.startsWith(apiPrefix) &&
+        /^[1-9]\d*$/.test(assetId),
+      `Updater URL is outside ${repository} ${tag}: ${value}`
+    );
+    const matches = signatures.get(signature.trim()) || [];
+    requireValue(
+      matches.length === 1,
+      `GitHub asset URL cannot be mapped to exactly one signed local file: ${value}`
+    );
+    [name] = matches;
+  }
   requireValue(basename(name) === name && name !== '.' && name !== '..', `Unsafe updater filename: ${name}`);
   return name;
 }
@@ -54,13 +90,14 @@ export function prepareTauriRelease({ sourceDirectory, outputDirectory, product,
   requireValue(latest.platforms && typeof latest.platforms === 'object' && !Array.isArray(latest.platforms), 'latest.json platforms are missing.');
 
   const tag = `v${latest.version}`;
+  const signatures = signatureFiles(source);
   const assets = [];
   const sourceFiles = new Map();
   for (const [target, entry] of Object.entries(latest.platforms)) {
     requireValue(targetPattern.test(target), `Invalid updater target: ${target}`);
     requireValue(entry && typeof entry === 'object', `Updater target ${target} is invalid.`);
     requireValue(typeof entry.signature === 'string' && entry.signature.trim().length > 20, `Updater signature is missing for ${target}.`);
-    const file = releaseFileFromURL(entry.url, repository, tag);
+    const file = releaseFileFromURL(entry.url, repository, tag, signatures, entry.signature);
     const path = join(source, file);
     requireValue(existsSync(path) && statSync(path).isFile(), `Updater asset is missing: ${file}`);
     const data = readFileSync(path);
@@ -73,7 +110,9 @@ export function prepareTauriRelease({ sourceDirectory, outputDirectory, product,
       size: data.length,
       sha256,
       signature: entry.signature.trim(),
-      mirrors: [entry.url],
+      mirrors: [
+        `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(file)}`,
+      ],
     });
     sourceFiles.set(file, path);
   }
