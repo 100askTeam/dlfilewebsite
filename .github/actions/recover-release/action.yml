@@ -1,0 +1,58 @@
+name: Restore missing signed release on dl.100ask.net
+description: Upload a verified release set and restore its existing immutable database record
+
+inputs:
+  release-directory:
+    description: Directory containing release-set.json and every declared asset
+    required: true
+  remote:
+    description: Restricted SSH destination, for example root@dl.100ask.net
+    required: true
+  ssh-private-key:
+    description: Private key bound to dl-release-command on the server
+    required: true
+  ssh-known-hosts:
+    description: Pinned known_hosts entry for the download server
+    required: true
+  public-base-url:
+    description: Download-site HTTPS origin used for verification
+    required: false
+    default: https://dl.100ask.net
+
+runs:
+  using: composite
+  steps:
+    - name: Configure restricted release key
+      shell: bash
+      env:
+        DL_ACTION_PRIVATE_KEY: ${{ inputs.ssh-private-key }}
+        DL_ACTION_KNOWN_HOSTS: ${{ inputs.ssh-known-hosts }}
+      run: |
+        set -euo pipefail
+        test -n "$DL_ACTION_PRIVATE_KEY"
+        test -n "$DL_ACTION_KNOWN_HOSTS"
+        install -d -m 0700 ~/.ssh
+        printf '%s\n' "$DL_ACTION_PRIVATE_KEY" > ~/.ssh/id_ed25519
+        printf '%s\n' "$DL_ACTION_KNOWN_HOSTS" > ~/.ssh/known_hosts
+        chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+    - name: Verify restricted recovery channel
+      shell: bash
+      env:
+        DL_REMOTE: ${{ inputs.remote }}
+      run: |
+        set -euo pipefail
+        actual="$(ssh -o BatchMode=yes -o IdentitiesOnly=yes "$DL_REMOTE" release-channel-probe-v3)"
+        test "$actual" = 'dl-release-command protocol=3'
+
+    - name: Restore signed release set
+      shell: bash
+      env:
+        DL_REMOTE: ${{ inputs.remote }}
+        DL_PUBLIC_BASE_URL: ${{ inputs.public-base-url }}
+      run: bash "$GITHUB_ACTION_PATH/../../../scripts/restore-release.sh" "${{ inputs.release-directory }}"
+
+    - name: Remove release key
+      if: ${{ always() }}
+      shell: bash
+      run: rm -f ~/.ssh/id_ed25519

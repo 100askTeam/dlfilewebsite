@@ -72,7 +72,7 @@ dlctl import ci-job-id
 
 生产 SSH key 必须绑定受限命令；不要允许该 key 获得交互式 root shell。仓库提供的白名单包装器
 只接受无副作用的协议探针、创建 `.part-*`、旧式 SCP sink、同名原子移动和
-`dlctl import` 五类固定命令：
+`dlctl import`；protocol v3 另外允许 `dlctl restore-published` 恢复已有不可变记录：
 
 ```bash
 sudo install -o root -g root -m 0755 deploy/ssh/dl-release-command \
@@ -105,16 +105,34 @@ sudo grep -F 'command="/usr/local/libexec/dl-release-command"' \
 ```bash
 ssh root@dl.100ask.net release-channel-probe-v2
 # dl-release-command protocol=2
+ssh root@dl.100ask.net release-channel-probe-v3
+# dl-release-command protocol=3
 ```
 
 v1 探针仍返回旧的 `lynx-release-command protocol=1`，只用于已发布 LYNX 工作流兼容；
-新产品和新工作流必须使用产品无关的 v2。
+普通发布使用产品无关的 v2，已有版本灾难恢复必须使用 v3。
 
 当 CI 复用现有 root SSH 入口时，这枚专用 key 必须保留 `restrict,command=...`
 限制，不得复用为交互登录 key。CI 使用 `scp -O`，forced-command 只开放可审计的
 SCP sink 和 `dlctl import`，不允许 SFTP 或任意 shell。
 
 自动发布默认关闭，只有明确设置 `DL_PUBLISH_NOW=true` 才会导入后立即发布。
+
+公开版本目录整体缺失、但数据库 release 记录仍存在时，不要再次 `import`，也不要让服务器
+直接从 GitHub 下载大文件。由产品仓库人工触发恢复 Action；它在 Runner 上验签后上传到
+incoming，再由受限通道运行：
+
+```bash
+DL_STATE_DIR=/home1/dlfile-state \
+DL_PUBLIC_DIR=/home1/dlfile \
+DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub \
+DL_RELEASE_ACTOR=admin \
+/home1/dladmin-code/current/build/dlctl restore-published recover-job-id
+```
+
+该命令只恢复与数据库原 manifest 完全一致的 published/superseded 记录，保持 release ID，
+必要时将旧 `releases/...` 元数据路径同步修正到 `Tools/...`。任何旧/新公开目录已经存在都会
+拒绝覆盖；完整恢复后的重复流水线通过下载站逐资产 SHA-256 反向校验后幂等退出。
 
 ## 5. 回归检查
 

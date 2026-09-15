@@ -90,6 +90,22 @@ func run(args []string) error {
 		}
 		_ = storage.AppendAudit(context.Background(), &actorID, "dlctl", "publish", "release", args[1], "local-cli", "dlctl", "success", detail(nil))
 		return printJSON(record)
+	case "restore-published":
+		if len(args) != 2 {
+			return usageError()
+		}
+		service, storage, actorID, err := openService()
+		if err != nil {
+			return err
+		}
+		defer storage.Close()
+		record, err := service.RestorePublished(context.Background(), args[1])
+		if err != nil {
+			_ = storage.AppendAudit(context.Background(), &actorID, "dlctl", "restore", "release", args[1], "local-cli", "dlctl", "failure", detail(err))
+			return err
+		}
+		_ = storage.AppendAudit(context.Background(), &actorID, "dlctl", "restore", "release", strconv.FormatInt(record.ID, 10), "local-cli", "dlctl", "success", detail(nil))
+		return printJSON(record)
 	case "list":
 		storage, err := openStore()
 		if err != nil {
@@ -195,7 +211,7 @@ func printJSON(value any) error {
 }
 
 func usageError() error {
-	return errors.New("usage: dlctl verify DIR | import [--publish] INCOMING_ID | publish ID | list | migrate-tools-layout [--dry-run]")
+	return errors.New("usage: dlctl verify DIR | import [--publish] INCOMING_ID | publish ID | restore-published INCOMING_ID | list | migrate-tools-layout [--dry-run]")
 }
 
 func detail(err error) string {

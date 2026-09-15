@@ -48,6 +48,19 @@ schema 1 的 `release-set.json`。流水线把清单声明的文件交给通用
 `DL_RELEASE_PUBLIC_KEY` 是单一信任域：多个产品共用该键前必须明确审批并记录；若要求产品
 隔离密钥，必须先实现并验证 product→public key 的显式绑定，禁止静默试钥或回退。
 
+### 已发布版本恢复
+
+下载服务器不得承担从 GitHub Release 下载大资产的工作。公开版本目录整体丢失时，由产品
+仓库的人工恢复工作流在 GitHub Runner 上下载并重新验证原发布集，再调用通用
+`100askTeam/dlfilewebsite/.github/actions/recover-release@<完整提交 SHA>`。恢复通道使用
+`release-channel-probe-v3`，只允许将验签后的 incoming 集合交给
+`dlctl restore-published`。
+
+恢复不会创建 release、改变 channel head 或覆盖已有目录。数据库必须已存在相同
+product/channel/version 的 published 或 superseded 记录，且规范化 manifest 必须完全一致；
+公开目录部分存在、记录缺失或任一字节不一致都会阻断。工作流成功后必须从下载站反向读取
+全部唯一资产并复核 SHA-256。该流程同样适用于 `lynx`、`usbtoolbox` 和后续登记产品。
+
 ## 4. 客户端接口
 
 通用更新接口：
@@ -75,3 +88,4 @@ https://dl.100ask.net/api/v1/tauri/usbtoolbox/stable/windows-x86_64/1.0.0
 - 使用统一发布集格式和上传脚本；
 - 添加一个服务端选择测试和一个客户端更新端点契约测试；
 - 首次 stable promotion 前完成下载、签名、摘要、安装和升级回退验证。
+- 为已发布版本配置人工恢复工作流，并将通用恢复 Action 固定到完整提交 SHA。

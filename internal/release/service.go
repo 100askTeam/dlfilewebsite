@@ -199,6 +199,82 @@ func (s *Service) Publish(ctx context.Context, id int64) (store.ReleaseRecord, e
 	return s.store.Release(ctx, id)
 }
 
+// RestorePublished replaces the missing public files for an existing immutable
+// release without creating a second release record. The signed manifest must be
+// byte-for-byte equivalent to the normalized manifest stored during import.
+func (s *Service) RestorePublished(ctx context.Context, incomingID string) (store.ReleaseRecord, error) {
+	if !incomingIDPattern.MatchString(incomingID) || incomingID == "." || incomingID == ".." {
+		return store.ReleaseRecord{}, errors.New("invalid incoming release identifier")
+	}
+	source := filepath.Join(s.incomingDir, incomingID)
+	if err := requireRealDirectory(source); err != nil {
+		return store.ReleaseRecord{}, err
+	}
+	manifest, err := LoadAndVerify(source, s.publicKey)
+	if err != nil {
+		return store.ReleaseRecord{}, err
+	}
+	version := strings.TrimPrefix(manifest.Version, "v")
+	record, err := s.store.ReleaseByIdentity(ctx, manifest.Product, manifest.Channel, version)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return store.ReleaseRecord{}, errors.New("matching release record does not exist")
+		}
+		return store.ReleaseRecord{}, err
+	}
+	if record.Status != "published" && record.Status != "superseded" {
+		return store.ReleaseRecord{}, fmt.Errorf("release is %s, expected published or superseded", record.Status)
+	}
+	normalizedManifest, err := json.Marshal(manifest)
+	if err != nil {
+		return store.ReleaseRecord{}, err
+	}
+	if string(normalizedManifest) != record.ManifestJSON {
+		return store.ReleaseRecord{}, errors.New("signed manifest does not match the existing release record")
+	}
+
+	legacy := legacyPublishedPath(record.Product, record.Channel, record.Version)
+	canonical := PublishedPath(record.Product, record.Channel, record.Version)
+	storedPath := filepath.ToSlash(record.PublishedPath)
+	if storedPath != legacy && storedPath != canonical {
+		return store.ReleaseRecord{}, fmt.Errorf("release has unexpected published path %q", record.PublishedPath)
+	}
+	for _, relative := range []string{legacy, canonical} {
+		path, pathErr := containedPath(s.publicDir, relative)
+		if pathErr != nil {
+			return store.ReleaseRecord{}, pathErr
+		}
+		if _, statErr := os.Lstat(path); statErr == nil {
+			return store.ReleaseRecord{}, fmt.Errorf("refuse restore because public release path already exists: %s", relative)
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			return store.ReleaseRecord{}, fmt.Errorf("inspect public release path %s: %w", relative, statErr)
+		}
+	}
+
+	if err := ensureDirectoryTree(s.publicDir, filepath.Dir(canonical), 0o755); err != nil {
+		return store.ReleaseRecord{}, err
+	}
+	if err := makePublicTree(source); err != nil {
+		return store.ReleaseRecord{}, err
+	}
+	destination, err := containedPath(s.publicDir, canonical)
+	if err != nil {
+		return store.ReleaseRecord{}, err
+	}
+	if err := os.Rename(source, destination); err != nil {
+		return store.ReleaseRecord{}, fmt.Errorf("restore release (state and public directories must share a filesystem): %w", err)
+	}
+	if storedPath != canonical {
+		if err := s.store.UpdatePublishedPath(ctx, record.ID, storedPath, canonical); err != nil {
+			if rollbackErr := os.Rename(destination, source); rollbackErr != nil {
+				return store.ReleaseRecord{}, fmt.Errorf("update restored release path: %v; rollback failed: %w", err, rollbackErr)
+			}
+			return store.ReleaseRecord{}, fmt.Errorf("update restored release path: %w", err)
+		}
+	}
+	return s.store.Release(ctx, record.ID)
+}
+
 // MigrateLegacyLayout moves previously published root-level releases into the
 // canonical /Tools/<product>/<channel>/<version> tree and updates each database record.
 // Run this with the web service stopped so file and metadata changes are not

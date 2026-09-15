@@ -80,6 +80,13 @@ func (s *Store) Release(ctx context.Context, id int64) (ReleaseRecord, error) {
 		 FROM releases WHERE id=?1`, id))
 }
 
+func (s *Store) ReleaseByIdentity(ctx context.Context, product, channel, version string) (ReleaseRecord, error) {
+	return scanRelease(s.db.QueryRowContext(ctx,
+		`SELECT id,product,channel,version,status,notes,manifest_json,staged_path,published_path,
+		        created_by,created_at,published_at
+		 FROM releases WHERE product=?1 AND channel=?2 AND version=?3`, product, channel, version))
+}
+
 func (s *Store) ListReleases(ctx context.Context, limit int) ([]ReleaseRecord, error) {
 	if limit < 1 || limit > 500 {
 		limit = 100

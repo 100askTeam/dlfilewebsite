@@ -8,6 +8,8 @@ probe_request_v1=release-channel-probe-v1
 probe_response_v1='lynx-release-command protocol=1'
 probe_request_v2=release-channel-probe-v2
 probe_response_v2='dl-release-command protocol=2'
+probe_request_v3=release-channel-probe-v3
+probe_response_v3='dl-release-command protocol=3'
 
 deny() {
   echo "release SSH command denied" >&2
@@ -28,6 +30,10 @@ parse_command() {
   fi
   if [[ "$normalized" == "$probe_request_v2" ]]; then
     parsed_action=probe-v2
+    return 0
+  fi
+  if [[ "$normalized" == "$probe_request_v3" ]]; then
+    parsed_action=probe-v3
     return 0
   fi
 
@@ -70,6 +76,14 @@ parse_command() {
     return 0
   fi
 
+  if [[ "$normalized" =~ ^/home1/dladmin-code/current/build/dlctl\ restore-published\ ([A-Za-z0-9][A-Za-z0-9._-]{0,119})$ ]]; then
+    source_id=${BASH_REMATCH[1]}
+    [[ "$normalized" == "$dlctl restore-published $source_id" ]] || return 1
+    parsed_action=restore-published
+    parsed_arg1=$source_id
+    return 0
+  fi
+
   return 1
 }
 
@@ -80,6 +94,7 @@ self_test() {
 
   parse_command "$probe_request_v1" && [[ "$parsed_action" == probe-v1 ]]
   parse_command "$probe_request_v2" && [[ "$parsed_action" == probe-v2 ]]
+  parse_command "$probe_request_v3" && [[ "$parsed_action" == probe-v3 ]]
   parse_command "install -d -m 0750 '$incoming/.part-$id'" &&
     [[ "$parsed_action" == install && "$parsed_arg1" == "$id" ]]
   parse_command "scp -p -t '$incoming/.part-$id/'" &&
@@ -90,17 +105,21 @@ self_test() {
     [[ "$parsed_action" == import && "$parsed_arg1" == "$id" ]]
   parse_command "$dlctl import --publish '$id'" &&
     [[ "$parsed_action" == import-publish && "$parsed_arg1" == "$id" ]]
+  parse_command "$dlctl restore-published '$id'" &&
+    [[ "$parsed_action" == restore-published && "$parsed_arg1" == "$id" ]]
 
   local rejected
   for rejected in \
     '' \
     'bash' \
     "$probe_request_v2; id" \
+    "$probe_request_v3; id" \
     "install -d -m 0750 '$incoming/.part-$id'; id" \
     "install -d -m 0750 '$incoming/.part-$too_long'" \
     "scp -r -t '$incoming/.part-$id/'" \
     "mv '$incoming/.part-$id' '$incoming/other'" \
     "$dlctl import '../../etc'" \
+    "$dlctl restore-published '../../etc'" \
     "$dlctl publish '$id'"; do
     if parse_command "$rejected"; then
       echo "self-test accepted forbidden command: $rejected" >&2
@@ -126,6 +145,9 @@ case "$parsed_action" in
   probe-v2)
     printf '%s\n' "$probe_response_v2"
     ;;
+  probe-v3)
+    printf '%s\n' "$probe_response_v3"
+    ;;
   install)
     exec /usr/bin/install -d -m 0750 "$incoming/.part-$parsed_arg1"
     ;;
@@ -144,6 +166,13 @@ case "$parsed_action" in
       exec "$dlctl" import --publish "$parsed_arg1"
     fi
     exec "$dlctl" import "$parsed_arg1"
+    ;;
+  restore-published)
+    export DL_STATE_DIR=/home1/dlfile-state
+    export DL_PUBLIC_DIR=/home1/dlfile
+    export DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub
+    export DL_RELEASE_ACTOR=admin
+    exec "$dlctl" restore-published "$parsed_arg1"
     ;;
   *)
     deny

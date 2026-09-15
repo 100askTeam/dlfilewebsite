@@ -9,6 +9,7 @@
 后台 / CI / SCP -> incoming -> verify -> staged -> approve -> Tools/<product>/<channel>/<version>
                                                         |-> dl.100ask.net
                                                         `-> GitHub mirror
+GitHub Runner recovery -> incoming -> verify existing DB identity -> missing Tools version directory
 ```
 
 公开文件与运行状态必须分离：
@@ -38,3 +39,4 @@ DL_STATE_DIR/trash/             # 可恢复删除，永不由 Nginx 公开
 - 大版本、安装布局变化、更新器变化或补丁校验失败：完整安装包。
 - `dl.100ask.net` 与 GitHub 只作为镜像来源；客户端对下载结果执行相同摘要和签名校验。
 - 产品标识、目录、API 和清单必须使用同一个小写 slug，例如 `lynx`、`usbtoolbox`。
+- 灾难恢复只补回已有不可变记录的完整目录，不创建版本、不覆盖部分目录、不改变 channel head。

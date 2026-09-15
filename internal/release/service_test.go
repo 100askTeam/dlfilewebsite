@@ -218,6 +218,112 @@ func TestMigrateLegacyLayoutMovesFilesAndMetadata(t *testing.T) {
 	}
 }
 
+func TestRestorePublishedRecreatesMissingCanonicalRelease(t *testing.T) {
+	service, storage, privateKey, userID, publicDir := newReleaseServiceFixture(t)
+	putIncomingRelease(t, service, privateKey, "original-job", "0.9.0", []Asset{{
+		Target: "windows-x86_64", Kind: "full", File: "lynx-full.exe",
+	}})
+	staged, err := service.ImportIncoming(context.Background(), "original-job", userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, err := service.Publish(context.Background(), staged.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical := PublishedPath("lynx", "stable", "0.9.0")
+	legacy := legacyPublishedPath("lynx", "stable", "0.9.0")
+	canonicalDirectory := filepath.Join(publicDir, filepath.FromSlash(canonical))
+	restoreDirectory := filepath.Join(service.IncomingDir(), "restore-job")
+	if err := os.Rename(canonicalDirectory, restoreDirectory); err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.UpdatePublishedPath(context.Background(), published.ID, canonical, legacy); err != nil {
+		t.Fatal(err)
+	}
+
+	restored, err := service.RestorePublished(context.Background(), "restore-job")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.ID != published.ID || restored.PublishedPath != canonical {
+		t.Fatalf("restore changed release identity or path: %#v", restored)
+	}
+	assetInfo, err := os.Stat(filepath.Join(canonicalDirectory, "lynx-full.exe"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assetInfo.Mode().Perm() != 0o644 {
+		t.Fatalf("restored asset must be public-readable: mode=%v", assetInfo.Mode().Perm())
+	}
+	if _, err := os.Stat(restoreDirectory); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("incoming directory must be consumed: %v", err)
+	}
+}
+
+func TestRestorePublishedKeepsCanonicalMetadata(t *testing.T) {
+	service, _, privateKey, userID, publicDir := newReleaseServiceFixture(t)
+	putIncomingRelease(t, service, privateKey, "original-job", "0.9.0", []Asset{{
+		Target: "linux-x86_64", Kind: "full", File: "lynx.AppImage",
+	}})
+	staged, err := service.ImportIncoming(context.Background(), "original-job", userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, err := service.Publish(context.Background(), staged.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical := PublishedPath("lynx", "stable", "0.9.0")
+	if err := os.Rename(filepath.Join(publicDir, filepath.FromSlash(canonical)), filepath.Join(service.IncomingDir(), "restore-job")); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := service.RestorePublished(context.Background(), "restore-job")
+	if err != nil || restored.ID != published.ID || restored.PublishedPath != canonical {
+		t.Fatalf("unexpected canonical restore: %#v, %v", restored, err)
+	}
+}
+
+func TestRestorePublishedRejectsExistingPublicFiles(t *testing.T) {
+	service, _, privateKey, userID, _ := newReleaseServiceFixture(t)
+	assets := []Asset{{Target: "windows-x86_64", Kind: "full", File: "lynx-full.exe"}}
+	putIncomingRelease(t, service, privateKey, "original-job", "0.9.0", assets)
+	staged, err := service.ImportIncoming(context.Background(), "original-job", userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Publish(context.Background(), staged.ID); err != nil {
+		t.Fatal(err)
+	}
+	putIncomingRelease(t, service, privateKey, "restore-job", "0.9.0", assets)
+	if _, err := service.RestorePublished(context.Background(), "restore-job"); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("restore must not overwrite public files: %v", err)
+	}
+}
+
+func TestRestorePublishedRejectsChangedSignedManifest(t *testing.T) {
+	service, _, privateKey, userID, publicDir := newReleaseServiceFixture(t)
+	putIncomingRelease(t, service, privateKey, "original-job", "0.9.0", []Asset{{
+		Target: "windows-x86_64", Kind: "full", File: "lynx-full.exe",
+	}})
+	staged, err := service.ImportIncoming(context.Background(), "original-job", userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Publish(context.Background(), staged.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(publicDir, filepath.FromSlash(PublishedPath("lynx", "stable", "0.9.0")))); err != nil {
+		t.Fatal(err)
+	}
+	putIncomingRelease(t, service, privateKey, "restore-job", "0.9.0", []Asset{{
+		Target: "windows-x86_64", Kind: "full", File: "different.exe",
+	}})
+	if _, err := service.RestorePublished(context.Background(), "restore-job"); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("restore accepted a different signed manifest: %v", err)
+	}
+}
+
 func TestPublishRevalidatesStagedBytes(t *testing.T) {
 	service, _, privateKey, userID, _ := newReleaseServiceFixture(t)
 	putIncomingRelease(t, service, privateKey, "tamper-job", "1.0.0", []Asset{{
