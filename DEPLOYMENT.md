@@ -45,7 +45,8 @@ dlctl import ci-job-id
 `docs/examples/publish-release.workflow.yml`。该文件不会在本仓库自动执行。
 
 生产 SSH key 必须绑定受限命令；不要允许该 key 获得交互式 root shell。仓库提供的白名单包装器
-只接受创建 `.part-*`、旧式 SCP sink、同名原子移动和 `dlctl import` 四类固定命令：
+只接受无副作用的协议探针、创建 `.part-*`、旧式 SCP sink、同名原子移动和
+`dlctl import` 五类固定命令：
 
 ```bash
 sudo install -o root -g root -m 0755 deploy/ssh/dl-release-command \
@@ -55,6 +56,29 @@ sudo sh -c 'printf "%s\n" \
   "restrict,command=\"/usr/local/libexec/dl-release-command\" ssh-ed25519 AAAA... lynx-release-ci" \
   >> /root/.ssh/authorized_keys'
 sudo chmod 0600 /root/.ssh/authorized_keys
+```
+
+旧部署若把 key 绑定到源码目录下的脚本，必须改为稳定安装路径，避免源码同步与实际
+forced-command 版本漂移：
+
+```bash
+sudo install -o root -g root -m 0755 deploy/ssh/dl-release-command \
+  /usr/local/libexec/dl-release-command
+sudo cp -a /root/.ssh/authorized_keys \
+  "/root/.ssh/authorized_keys.before-release-command.$(date +%Y%m%d%H%M%S)"
+sudo sed -i \
+  's#command="/home1/dladmin-code/current/deploy/ssh/dl-release-command"#command="/usr/local/libexec/dl-release-command"#' \
+  /root/.ssh/authorized_keys
+sudo grep -F 'command="/usr/local/libexec/dl-release-command"' \
+  /root/.ssh/authorized_keys
+```
+
+部署后，使用专用私钥从允许访问 SSH 的主机执行下列命令，只应输出固定协议版本；
+它不会创建目录、导入文件或改变发布状态：
+
+```bash
+ssh root@dl.100ask.net release-channel-probe-v1
+# lynx-release-command protocol=1
 ```
 
 当 CI 复用现有 root SSH 入口时，这枚专用 key 必须保留 `restrict,command=...`

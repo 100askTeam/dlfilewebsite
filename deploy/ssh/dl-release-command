@@ -3,40 +3,139 @@ set -euo pipefail
 umask 027
 
 incoming=/home1/dlfile-state/incoming
-original=${SSH_ORIGINAL_COMMAND:-}
-normalized=${original//\'/}
+dlctl=/home1/dladmin-code/current/build/dlctl
+probe_request=release-channel-probe-v1
+probe_response='lynx-release-command protocol=1'
 
 deny() {
   echo "release SSH command denied" >&2
   exit 126
 }
 
-if [[ "$normalized" =~ ^install\ -d\ -m\ 0750\ /home1/dlfile-state/incoming/\.part-([A-Za-z0-9][A-Za-z0-9._-]{0,119})$ ]]; then
-  [[ "$normalized" == "install -d -m 0750 $incoming/.part-${BASH_REMATCH[1]}" ]] || deny
-  exec /usr/bin/install -d -m 0750 "$incoming/.part-${BASH_REMATCH[1]}"
+parse_command() {
+  local original=$1
+  local normalized=${original//\'/}
+  local source_id destination_id publish_flag
+
+  parsed_action=
+  parsed_arg1=
+
+  if [[ "$normalized" == "$probe_request" ]]; then
+    parsed_action=probe
+    return 0
+  fi
+
+  if [[ "$normalized" =~ ^install\ -d\ -m\ 0750\ /home1/dlfile-state/incoming/\.part-([A-Za-z0-9][A-Za-z0-9._-]{0,119})$ ]]; then
+    source_id=${BASH_REMATCH[1]}
+    [[ "$normalized" == "install -d -m 0750 $incoming/.part-$source_id" ]] || return 1
+    parsed_action=install
+    parsed_arg1=$source_id
+    return 0
+  fi
+
+  if [[ "$normalized" =~ ^scp\ -p\ -t\ (/home1/dlfile-state/incoming/\.part-([A-Za-z0-9][A-Za-z0-9._-]{0,119})/?)$ ]]; then
+    source_id=${BASH_REMATCH[1]}
+    [[ "$normalized" == "scp -p -t $source_id" ]] || return 1
+    parsed_action=scp
+    parsed_arg1=$source_id
+    return 0
+  fi
+
+  if [[ "$normalized" =~ ^mv\ /home1/dlfile-state/incoming/\.part-([A-Za-z0-9][A-Za-z0-9._-]{0,119})\ /home1/dlfile-state/incoming/([A-Za-z0-9][A-Za-z0-9._-]{0,119})$ ]]; then
+    source_id=${BASH_REMATCH[1]}
+    destination_id=${BASH_REMATCH[2]}
+    [[ "$source_id" == "$destination_id" ]] || return 1
+    [[ "$normalized" == "mv $incoming/.part-$source_id $incoming/$destination_id" ]] || return 1
+    parsed_action=move
+    parsed_arg1=$source_id
+    return 0
+  fi
+
+  if [[ "$normalized" =~ ^/home1/dladmin-code/current/build/dlctl\ import(\ --publish)?\ ([A-Za-z0-9][A-Za-z0-9._-]{0,119})$ ]]; then
+    publish_flag=${BASH_REMATCH[1]}
+    source_id=${BASH_REMATCH[2]}
+    [[ "$normalized" == "$dlctl import$publish_flag $source_id" ]] || return 1
+    if [[ -n "$publish_flag" ]]; then
+      parsed_action=import-publish
+    else
+      parsed_action=import
+    fi
+    parsed_arg1=$source_id
+    return 0
+  fi
+
+  return 1
+}
+
+self_test() {
+  local id=ci-34828377138-1-39150262066db98624e77b9a0701249d31f35f88
+  local too_long
+  printf -v too_long '%0121d' 0
+
+  parse_command "$probe_request" && [[ "$parsed_action" == probe ]]
+  parse_command "install -d -m 0750 '$incoming/.part-$id'" &&
+    [[ "$parsed_action" == install && "$parsed_arg1" == "$id" ]]
+  parse_command "scp -p -t '$incoming/.part-$id/'" &&
+    [[ "$parsed_action" == scp && "$parsed_arg1" == "$incoming/.part-$id/" ]]
+  parse_command "mv '$incoming/.part-$id' '$incoming/$id'" &&
+    [[ "$parsed_action" == move && "$parsed_arg1" == "$id" ]]
+  parse_command "$dlctl import '$id'" &&
+    [[ "$parsed_action" == import && "$parsed_arg1" == "$id" ]]
+  parse_command "$dlctl import --publish '$id'" &&
+    [[ "$parsed_action" == import-publish && "$parsed_arg1" == "$id" ]]
+
+  local rejected
+  for rejected in \
+    '' \
+    'bash' \
+    "$probe_request; id" \
+    "install -d -m 0750 '$incoming/.part-$id'; id" \
+    "install -d -m 0750 '$incoming/.part-$too_long'" \
+    "scp -r -t '$incoming/.part-$id/'" \
+    "mv '$incoming/.part-$id' '$incoming/other'" \
+    "$dlctl import '../../etc'" \
+    "$dlctl publish '$id'"; do
+    if parse_command "$rejected"; then
+      echo "self-test accepted forbidden command: $rejected" >&2
+      return 1
+    fi
+  done
+
+  echo "dl-release-command self-test passed"
+}
+
+if [[ $# -gt 0 ]]; then
+  [[ $# -eq 1 && "$1" == --self-test ]] || deny
+  self_test
+  exit 0
 fi
 
-if [[ "$normalized" =~ ^scp\ -p\ -t\ (/home1/dlfile-state/incoming/\.part-([A-Za-z0-9][A-Za-z0-9._-]{0,119})/?)$ ]]; then
-  [[ "$normalized" == "scp -p -t ${BASH_REMATCH[1]}" ]] || deny
-  exec /usr/bin/scp -p -t "${BASH_REMATCH[1]}"
-fi
+parse_command "${SSH_ORIGINAL_COMMAND:-}" || deny
 
-if [[ "$normalized" =~ ^mv\ /home1/dlfile-state/incoming/\.part-([A-Za-z0-9][A-Za-z0-9._-]{0,119})\ /home1/dlfile-state/incoming/([A-Za-z0-9][A-Za-z0-9._-]{0,119})$ ]]; then
-  [[ "$normalized" == "mv $incoming/.part-${BASH_REMATCH[1]} $incoming/${BASH_REMATCH[2]}" ]] || deny
-  [[ "${BASH_REMATCH[1]}" == "${BASH_REMATCH[2]}" ]] || deny
-  exec /usr/bin/mv "$incoming/.part-${BASH_REMATCH[1]}" "$incoming/${BASH_REMATCH[2]}"
-fi
-
-if [[ "$normalized" =~ ^/home1/dladmin-code/current/build/dlctl\ import(\ --publish)?\ ([A-Za-z0-9][A-Za-z0-9._-]{0,119})$ ]]; then
-	[[ "$normalized" == "/home1/dladmin-code/current/build/dlctl import${BASH_REMATCH[1]} ${BASH_REMATCH[2]}" ]] || deny
-	export DL_STATE_DIR=/home1/dlfile-state
-	export DL_PUBLIC_DIR=/home1/dlfile
-  export DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub
-  export DL_RELEASE_ACTOR=admin
-  if [[ -n "${BASH_REMATCH[1]}" ]]; then
-		exec /home1/dladmin-code/current/build/dlctl import --publish "${BASH_REMATCH[2]}"
-	fi
-	exec /home1/dladmin-code/current/build/dlctl import "${BASH_REMATCH[2]}"
-fi
-
-deny
+case "$parsed_action" in
+  probe)
+    printf '%s\n' "$probe_response"
+    ;;
+  install)
+    exec /usr/bin/install -d -m 0750 "$incoming/.part-$parsed_arg1"
+    ;;
+  scp)
+    exec /usr/bin/scp -p -t "$parsed_arg1"
+    ;;
+  move)
+    exec /usr/bin/mv "$incoming/.part-$parsed_arg1" "$incoming/$parsed_arg1"
+    ;;
+  import | import-publish)
+    export DL_STATE_DIR=/home1/dlfile-state
+    export DL_PUBLIC_DIR=/home1/dlfile
+    export DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub
+    export DL_RELEASE_ACTOR=admin
+    if [[ "$parsed_action" == import-publish ]]; then
+      exec "$dlctl" import --publish "$parsed_arg1"
+    fi
+    exec "$dlctl" import "$parsed_arg1"
+    ;;
+  *)
+    deny
+    ;;
+esac
