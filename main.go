@@ -756,6 +756,10 @@ func (a *App) handlePublic(w http.ResponseWriter, r *http.Request) {
 		a.serveRawFile(w, r, strings.TrimPrefix(r.URL.Path, "/"))
 		return
 	}
+	if destination, ok := release.LegacyRedirectPath(r.URL.Path); ok {
+		http.Redirect(w, r, destination, http.StatusPermanentRedirect)
+		return
+	}
 
 	fullPath, relPath, err := a.resolvePath(r.URL.Path)
 	if err != nil {
@@ -778,11 +782,12 @@ func (a *App) handlePublic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !a.shouldAllowPublicFile(info.Name()) {
+	managedRelease := isReleaseManagedPath(relPath)
+	if !managedRelease && !a.shouldAllowPublicFile(info.Name()) {
 		http.NotFound(w, r)
 		return
 	}
-	if isReleaseManagedPath(relPath) {
+	if managedRelease {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 	a.recordDownload("/" + relPath)
@@ -1101,8 +1106,7 @@ func sanitizeName(name string) (string, error) {
 }
 
 func isReleaseManagedPath(relative string) bool {
-	relative = strings.Trim(strings.ReplaceAll(relative, "\\", "/"), "/")
-	return relative == "releases" || strings.HasPrefix(relative, "releases/")
+	return release.IsManagedPublishedPath(relative)
 }
 
 func ensureSubPath(baseDir, target string) error {

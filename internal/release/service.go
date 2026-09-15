@@ -46,6 +46,12 @@ type UpdateAsset struct {
 	Signature   string   `json:"signature"`
 }
 
+type LayoutMigration struct {
+	ReleaseID int64  `json:"release_id"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+}
+
 func NewService(storage *store.Store, stateDir, publicDir, publicKeyText string) (*Service, error) {
 	if storage == nil {
 		return nil, errors.New("release store is required")
@@ -67,10 +73,13 @@ func NewService(storage *store.Store, stateDir, publicDir, publicKeyText string)
 		incomingDir: filepath.Join(stateDir, "incoming"),
 		stagedDir:   filepath.Join(stateDir, "staged"),
 	}
-	for _, directory := range []string{service.incomingDir, service.stagedDir, filepath.Join(publicDir, "releases")} {
+	for _, directory := range []string{service.incomingDir, service.stagedDir} {
 		if err := os.MkdirAll(directory, 0o750); err != nil {
 			return nil, fmt.Errorf("create release directory: %w", err)
 		}
+	}
+	if err := ensureDirectoryTree(publicDir, PublicToolsDirectory, 0o755); err != nil {
+		return nil, fmt.Errorf("create public Tools directory: %w", err)
 	}
 	return service, nil
 }
@@ -167,9 +176,9 @@ func (s *Service) Publish(ctx context.Context, id int64) (store.ReleaseRecord, e
 	if err := makePublicTree(source); err != nil {
 		return store.ReleaseRecord{}, err
 	}
-	relativePublished := filepath.Join("releases", record.Product, record.Channel, record.Version)
+	relativePublished := PublishedPath(record.Product, record.Channel, record.Version)
 	destination := filepath.Join(s.publicDir, relativePublished)
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+	if err := ensureDirectoryTree(s.publicDir, filepath.Dir(relativePublished), 0o755); err != nil {
 		return store.ReleaseRecord{}, err
 	}
 	if _, err := os.Lstat(destination); !errors.Is(err, os.ErrNotExist) {
@@ -188,6 +197,108 @@ func (s *Service) Publish(ctx context.Context, id int64) (store.ReleaseRecord, e
 		return store.ReleaseRecord{}, err
 	}
 	return s.store.Release(ctx, id)
+}
+
+// MigrateLegacyLayout moves previously published root-level releases into the
+// canonical /Tools/<product>/releases tree and updates each database record.
+// Run this with the web service stopped so file and metadata changes are not
+// observed halfway through the migration.
+func (s *Service) MigrateLegacyLayout(ctx context.Context, dryRun bool) ([]LayoutMigration, error) {
+	records, err := s.store.LegacyPublishedReleases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	migrations := make([]LayoutMigration, 0, len(records))
+	for _, record := range records {
+		from := legacyPublishedPath(record.Product, record.Channel, record.Version)
+		if filepath.ToSlash(record.PublishedPath) != from {
+			return nil, fmt.Errorf("release %d has unexpected legacy path %q", record.ID, record.PublishedPath)
+		}
+		to := PublishedPath(record.Product, record.Channel, record.Version)
+		source, err := containedPath(s.publicDir, from)
+		if err != nil {
+			return nil, err
+		}
+		destination, err := containedPath(s.publicDir, to)
+		if err != nil {
+			return nil, err
+		}
+		sourceInfo, sourceErr := os.Lstat(source)
+		destinationInfo, destinationErr := os.Lstat(destination)
+		sourceExists := sourceErr == nil
+		destinationExists := destinationErr == nil
+		if sourceErr != nil && !errors.Is(sourceErr, os.ErrNotExist) {
+			return nil, fmt.Errorf("inspect legacy release %d: %w", record.ID, sourceErr)
+		}
+		if destinationErr != nil && !errors.Is(destinationErr, os.ErrNotExist) {
+			return nil, fmt.Errorf("inspect canonical release %d: %w", record.ID, destinationErr)
+		}
+		if sourceExists && (!sourceInfo.IsDir() || sourceInfo.Mode()&os.ModeSymlink != 0) {
+			return nil, fmt.Errorf("legacy release %d is not a real directory", record.ID)
+		}
+		if sourceExists {
+			if err := requireSafeExistingDirectory(s.publicDir, from); err != nil {
+				return nil, fmt.Errorf("inspect legacy release %d path: %w", record.ID, err)
+			}
+		}
+		if destinationExists && (!destinationInfo.IsDir() || destinationInfo.Mode()&os.ModeSymlink != 0) {
+			return nil, fmt.Errorf("canonical release %d is not a real directory", record.ID)
+		}
+		if destinationExists {
+			if err := requireSafeExistingDirectory(s.publicDir, to); err != nil {
+				return nil, fmt.Errorf("inspect canonical release %d path: %w", record.ID, err)
+			}
+		}
+		if sourceExists && destinationExists {
+			return nil, fmt.Errorf("release %d exists in both legacy and canonical layouts", record.ID)
+		}
+		if !sourceExists && !destinationExists {
+			return nil, fmt.Errorf("release %d has no files in either public layout", record.ID)
+		}
+		verifyDirectory := destination
+		if sourceExists {
+			verifyDirectory = source
+		}
+		if _, err := LoadAndVerify(verifyDirectory, s.publicKey); err != nil {
+			return nil, fmt.Errorf("verify release %d before migration: %w", record.ID, err)
+		}
+		migration := LayoutMigration{ReleaseID: record.ID, From: from, To: to}
+		if dryRun {
+			migrations = append(migrations, migration)
+			continue
+		}
+
+		moved := false
+		if sourceExists {
+			if err := ensureDirectoryTree(s.publicDir, filepath.Dir(to), 0o755); err != nil {
+				return nil, fmt.Errorf("create canonical release parent: %w", err)
+			}
+			if err := os.Rename(source, destination); err != nil {
+				return nil, fmt.Errorf("move release %d to Tools layout: %w", record.ID, err)
+			}
+			moved = true
+		}
+		if err := s.store.UpdatePublishedPath(ctx, record.ID, from, to); err != nil {
+			if moved {
+				if rollbackErr := os.Rename(destination, source); rollbackErr != nil {
+					return nil, fmt.Errorf("update release %d path: %v; rollback failed: %w", record.ID, err, rollbackErr)
+				}
+			}
+			return nil, fmt.Errorf("update release %d path: %w", record.ID, err)
+		}
+		migrations = append(migrations, migration)
+		removeEmptyLegacyParents(filepath.Dir(source), filepath.Join(s.publicDir, ReleaseDirectoryName))
+	}
+	return migrations, nil
+}
+
+func removeEmptyLegacyParents(current, stop string) {
+	stop = filepath.Clean(stop)
+	for current = filepath.Clean(current); strings.HasPrefix(current, stop); current = filepath.Dir(current) {
+		if err := os.Remove(current); err != nil || current == stop {
+			return
+		}
+	}
 }
 
 func makePublicTree(directory string) error {
@@ -313,4 +424,46 @@ func requireRealDirectory(path string) error {
 		return errors.New("release source must be a real directory")
 	}
 	return nil
+}
+
+func ensureDirectoryTree(root, relative string, mode os.FileMode) error {
+	if filepath.IsAbs(relative) {
+		return errors.New("directory path must be relative")
+	}
+	root = filepath.Clean(root)
+	current := root
+	for _, component := range strings.Split(filepath.Clean(relative), string(filepath.Separator)) {
+		if component == "." || component == "" {
+			continue
+		}
+		if component == ".." {
+			return errors.New("directory path escapes configured root")
+		}
+		current = filepath.Join(current, component)
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.Mkdir(current, mode); err != nil {
+				return fmt.Errorf("create directory %s: %w", component, err)
+			}
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("directory path contains unsafe component %s", component)
+		}
+	}
+	return nil
+}
+
+func requireSafeExistingDirectory(root, relative string) error {
+	if err := ensureDirectoryTree(root, filepath.Dir(relative), 0o755); err != nil {
+		return err
+	}
+	directory, err := containedPath(root, relative)
+	if err != nil {
+		return err
+	}
+	return requireRealDirectory(directory)
 }

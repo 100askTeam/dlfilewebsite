@@ -26,7 +26,33 @@ Nginx 只代理到 `127.0.0.1:5001`。不要再启用 fancyindex、PHP、旧 Fla
 结构、版本、大小、SHA-256 和 minisign 验证后只会标记为 `staged`；人工点击“确认发布”
 后才原子移动到公开的不可变目录。
 
-普通“文件管理”不能覆盖或删除 `releases/`，避免绕过验签。
+正式资产固定发布到 `/Tools/<product>/releases/<channel>/<version>/`。普通“文件管理”
+不能覆盖或删除任何产品的 `releases/` 子树，避免绕过验签；`/Tools/<product>/` 下其他
+人工资料仍可照常管理。
+
+旧版曾把正式资产写到根级 `/releases/<product>/...`。升级二进制后先保持服务运行，执行
+只读预检：
+
+```bash
+DL_STATE_DIR=/home1/dlfile-state \
+DL_PUBLIC_DIR=/home1/dlfile \
+DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub \
+DL_RELEASE_ACTOR=admin \
+/home1/dladmin-code/current/build/dlctl migrate-tools-layout --dry-run
+```
+
+确认计划只包含预期产品和版本后停站，再执行实际迁移：
+
+```bash
+DL_STATE_DIR=/home1/dlfile-state \
+DL_PUBLIC_DIR=/home1/dlfile \
+DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub \
+DL_RELEASE_ACTOR=admin \
+/home1/dladmin-code/current/build/dlctl migrate-tools-layout
+```
+
+命令会先重新验签，再逐版本原子移动文件并同步 SQLite 路径；重复执行返回 `count: 0`。
+迁移后根级 `/releases` 不再存文件，只由 Nginx/Go 返回到 `/Tools/...` 的 308 兼容跳转。
 
 ## 4. SSH/SCP 与 GitHub Actions
 
@@ -77,9 +103,12 @@ sudo grep -F 'command="/usr/local/libexec/dl-release-command"' \
 它不会创建目录、导入文件或改变发布状态：
 
 ```bash
-ssh root@dl.100ask.net release-channel-probe-v1
-# lynx-release-command protocol=1
+ssh root@dl.100ask.net release-channel-probe-v2
+# dl-release-command protocol=2
 ```
+
+v1 探针仍返回旧的 `lynx-release-command protocol=1`，只用于已发布 LYNX 工作流兼容；
+新产品和新工作流必须使用产品无关的 v2。
 
 当 CI 复用现有 root SSH 入口时，这枚专用 key 必须保留 `restrict,command=...`
 限制，不得复用为交互登录 key。CI 使用 `scp -O`，forced-command 只开放可审计的
@@ -94,6 +123,7 @@ go test ./...
 go vet ./...
 curl -fsS https://dl.100ask.net/
 curl -fsS https://dl.100ask.net/api/v1/updates/lynx/stable/windows-x86_64/0.9.0
+curl -fsSI https://dl.100ask.net/releases/lynx/stable/0.9.0/release-set.json
 sudo systemctl status dladmin-go --no-pager
 sudo journalctl -u dladmin-go -n 100 --no-pager
 ```

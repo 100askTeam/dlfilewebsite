@@ -83,10 +83,10 @@ func TestTauriEndpointSelectsDeltaAndHonorsFullFallbackHeader(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	request := func(mode string) map[string]any {
+	request := func(header, mode string) map[string]any {
 		r := httptest.NewRequest(http.MethodGet, "/api/v1/tauri/lynx/stable/windows-x86_64/0.9.0", nil)
 		if mode != "" {
-			r.Header.Set("X-Lynx-Update-Mode", mode)
+			r.Header.Set(header, mode)
 		}
 		w := httptest.NewRecorder()
 		app.handleTauriUpdateAPI(w, r)
@@ -97,18 +97,22 @@ func TestTauriEndpointSelectsDeltaAndHonorsFullFallbackHeader(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 			t.Fatal(err)
 		}
-		if w.Header().Get("Vary") != "X-Lynx-Update-Mode" {
+		if w.Header().Get("Vary") != "X-Update-Mode, X-Lynx-Update-Mode" {
 			t.Fatalf("missing update-mode Vary header")
 		}
 		return result
 	}
 
-	delta := request("")
+	delta := request("", "")
 	if delta["strategy"] != "delta" || delta["fallback_available"] != true {
 		t.Fatalf("default route must select exact delta: %#v", delta)
 	}
-	full := request("full")
+	full := request("X-Update-Mode", "full")
 	if full["strategy"] != "full" || full["fallback_available"] != false {
 		t.Fatalf("full header must select complete installer: %#v", full)
+	}
+	legacyFull := request("X-Lynx-Update-Mode", "full")
+	if legacyFull["strategy"] != "full" {
+		t.Fatalf("legacy LYNX header must remain compatible: %#v", legacyFull)
 	}
 }

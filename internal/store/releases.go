@@ -106,6 +106,49 @@ func (s *Store) ListReleases(ctx context.Context, limit int) ([]ReleaseRecord, e
 	return releases, nil
 }
 
+func (s *Store) LegacyPublishedReleases(ctx context.Context) ([]ReleaseRecord, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id,product,channel,version,status,notes,manifest_json,staged_path,published_path,
+		        created_by,created_at,published_at
+		 FROM releases
+		 WHERE status IN ('published','superseded') AND published_path LIKE 'releases/%'
+		 ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("list legacy published releases: %w", err)
+	}
+	defer rows.Close()
+	releases := make([]ReleaseRecord, 0)
+	for rows.Next() {
+		record, err := scanRelease(rows)
+		if err != nil {
+			return nil, err
+		}
+		releases = append(releases, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate legacy published releases: %w", err)
+	}
+	return releases, nil
+}
+
+func (s *Store) UpdatePublishedPath(ctx context.Context, id int64, from, to string) error {
+	result, err := s.db.ExecContext(ctx,
+		`UPDATE releases SET published_path=?1
+		 WHERE id=?2 AND status IN ('published','superseded') AND published_path=?3`,
+		to, id, from)
+	if err != nil {
+		return fmt.Errorf("update published path: %w", err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read published path update result: %w", err)
+	}
+	if count != 1 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }

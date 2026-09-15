@@ -1,4 +1,4 @@
-name: Publish signed release example
+name: Publish signed product release example
 
 # This is documentation, not an active workflow. The release-producing repository
 # must first build and sign all files in RELEASE_DIRECTORY.
@@ -11,8 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Upload and stage a prebuilt release set
-        env:
-          DL_REMOTE: ${{ secrets.DL_SSH_REMOTE }}
-          DL_PUBLISH_NOW: 'false'
-          RELEASE_DIRECTORY: dist/release-set
-        run: bash scripts/publish-release.sh "$RELEASE_DIRECTORY"
+        uses: 100askTeam/dlfilewebsite/.github/actions/publish-release@release-publisher-v1
+        with:
+          release-directory: dist/release-set
+          remote: ${{ secrets.DL_SSH_REMOTE }}
+          ssh-private-key: ${{ secrets.DL_SSH_PRIVATE_KEY }}
+          ssh-known-hosts: ${{ secrets.DL_SSH_KNOWN_HOSTS }}
+          publish-now: 'false'

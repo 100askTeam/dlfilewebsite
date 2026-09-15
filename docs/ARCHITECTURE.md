@@ -6,7 +6,7 @@
 非公开的 `incoming` 暂存区，并必须经过同一套摘要、签名、结构和版本校验后才能发布。
 
 ```text
-后台 / CI / SCP -> incoming -> verify -> staged -> approve -> immutable releases
+后台 / CI / SCP -> incoming -> verify -> staged -> approve -> Tools/<product>/releases
                                                         |-> dl.100ask.net
                                                         `-> GitHub mirror
 ```
@@ -14,7 +14,8 @@
 公开文件与运行状态必须分离：
 
 ```text
-DL_PUBLIC_DIR/                  # Nginx 可读，服务进程可发布
+DL_PUBLIC_DIR/Tools/<product>/releases/<channel>/<version>/
+                                # Nginx 可读的签名不可变资产
 DL_STATE_DIR/dladmin.db         # 用户、会话、审计和发布元数据
 DL_STATE_DIR/incoming/          # 永不由 Nginx 公开
 DL_STATE_DIR/trash/             # 可恢复删除，永不由 Nginx 公开
@@ -30,9 +31,10 @@ DL_STATE_DIR/trash/             # 可恢复删除，永不由 Nginx 公开
 - 签名私钥不得部署到下载服务器；服务器只持有公开验签密钥。
 - 删除进入回收站；永久删除必须是独立、可审计的管理操作。
 
-## LYNX 更新分级
+## 产品更新分级
 
 - 旧客户端到首个支持增量更新的版本：完整 Tauri 安装包。
 - 同一兼容线的小版本：只在存在精确来源版本补丁且补丁足够小时选择增量包。
 - 大版本、安装布局变化、更新器变化或补丁校验失败：完整安装包。
 - `dl.100ask.net` 与 GitHub 只作为镜像来源；客户端对下载结果执行相同摘要和签名校验。
+- 产品标识、目录、API 和清单必须使用同一个小写 slug，例如 `lynx`、`usbtoolbox`。

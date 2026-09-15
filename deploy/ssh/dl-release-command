@@ -4,8 +4,10 @@ umask 027
 
 incoming=/home1/dlfile-state/incoming
 dlctl=/home1/dladmin-code/current/build/dlctl
-probe_request=release-channel-probe-v1
-probe_response='lynx-release-command protocol=1'
+probe_request_v1=release-channel-probe-v1
+probe_response_v1='lynx-release-command protocol=1'
+probe_request_v2=release-channel-probe-v2
+probe_response_v2='dl-release-command protocol=2'
 
 deny() {
   echo "release SSH command denied" >&2
@@ -20,8 +22,12 @@ parse_command() {
   parsed_action=
   parsed_arg1=
 
-  if [[ "$normalized" == "$probe_request" ]]; then
-    parsed_action=probe
+  if [[ "$normalized" == "$probe_request_v1" ]]; then
+    parsed_action=probe-v1
+    return 0
+  fi
+  if [[ "$normalized" == "$probe_request_v2" ]]; then
+    parsed_action=probe-v2
     return 0
   fi
 
@@ -72,7 +78,8 @@ self_test() {
   local too_long
   printf -v too_long '%0121d' 0
 
-  parse_command "$probe_request" && [[ "$parsed_action" == probe ]]
+  parse_command "$probe_request_v1" && [[ "$parsed_action" == probe-v1 ]]
+  parse_command "$probe_request_v2" && [[ "$parsed_action" == probe-v2 ]]
   parse_command "install -d -m 0750 '$incoming/.part-$id'" &&
     [[ "$parsed_action" == install && "$parsed_arg1" == "$id" ]]
   parse_command "scp -p -t '$incoming/.part-$id/'" &&
@@ -88,7 +95,7 @@ self_test() {
   for rejected in \
     '' \
     'bash' \
-    "$probe_request; id" \
+    "$probe_request_v2; id" \
     "install -d -m 0750 '$incoming/.part-$id'; id" \
     "install -d -m 0750 '$incoming/.part-$too_long'" \
     "scp -r -t '$incoming/.part-$id/'" \
@@ -113,8 +120,11 @@ fi
 parse_command "${SSH_ORIGINAL_COMMAND:-}" || deny
 
 case "$parsed_action" in
-  probe)
-    printf '%s\n' "$probe_response"
+  probe-v1)
+    printf '%s\n' "$probe_response_v1"
+    ;;
+  probe-v2)
+    printf '%s\n' "$probe_response_v2"
     ;;
   install)
     exec /usr/bin/install -d -m 0750 "$incoming/.part-$parsed_arg1"

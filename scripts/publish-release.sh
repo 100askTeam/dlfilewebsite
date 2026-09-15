@@ -51,7 +51,7 @@ probe_sha256=$(jq -er --arg target "$probe_target" \
   '[.assets[] | select(.kind == "full" and .target == $target)][0].sha256' \
   "$release_dir/release-set.json")
 if [[ ! "$product" =~ ^[a-z][a-z0-9_-]{1,63}$ ]] ||
-  [[ ! "$channel" =~ ^[a-z][a-z0-9_-]{1,63}$ ]] ||
+  [[ ! "$channel" =~ ^(stable|beta|nightly)$ ]] ||
   [[ ! "$probe_target" =~ ^[a-z][a-z0-9_-]{1,63}$ ]] ||
   [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] ||
   [[ ! "$probe_sha256" =~ ^[0-9a-f]{64}$ ]] ||
@@ -87,6 +87,7 @@ ssh "$remote" "mv '$remote_incoming/.part-$job_id' '$remote_incoming/$job_id'"
 
 if [[ "$publish_now" == "true" ]]; then
   ssh "$remote" "$remote_dlctl import --publish '$job_id'"
+  echo "published: $public_base_url/Tools/$product/releases/$channel/$version/"
 else
   ssh "$remote" "$remote_dlctl import '$job_id'"
 fi

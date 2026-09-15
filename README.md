@@ -13,8 +13,8 @@
 - 文件上传、新建目录、可恢复删除和审计日志；
 - 私有 `incoming`、签名清单校验、二次验签、不可变版本目录；
 - 人工后台上传，或 GitHub Actions + SSH/SCP 自动导入；
-- LYNX 精确版本增量选择，不能增量时强制返回完整安装包；
-- Tauri 更新请求可用 `X-Lynx-Update-Mode: full` 显式取得签名完整包恢复路径；
+- 任意已注册产品的精确版本增量选择，不能增量时强制返回完整安装包；
+- Tauri 更新请求可用 `X-Update-Mode: full` 显式取得签名完整包恢复路径；
 - `dl.100ask.net` 主下载地址及最多四个 HTTPS 镜像地址。
 
 Python 版文件只为旧部署迁移保留，新部署不要安装 Flask/Gunicorn。
@@ -38,7 +38,9 @@ CGO_ENABLED=0 go build -o build/dlctl ./cmd/dlctl
 /home1/
 ├── dladmin-code/current/   # Go 源码和 build/dladmin-go、build/dlctl
 ├── dlfile/                 # 现有下载文件，不随源码发布覆盖
-│   └── releases/lynx/stable/0.9.1/...
+│   └── Tools/
+│       ├── lynx/releases/stable/0.9.1/...
+│       └── usbtoolbox/releases/stable/1.0.1/...
 └── dlfile-state/           # Nginx 永不公开
     ├── dladmin.db
     ├── incoming/
@@ -65,5 +67,6 @@ export DL_RELEASE_PUBLIC_KEY_FILE=/etc/dladmin/release.pub
 `DL_ADMIN_PASSWORD`。签名私钥只保存在发布机/GitHub Secrets，下载服务器只保存公钥。
 
 完整上线流程见 [DEPLOYMENT.md](DEPLOYMENT.md)，发布清单格式见
-[docs/RELEASE_FORMAT.md](docs/RELEASE_FORMAT.md)，整体设计见
+[docs/RELEASE_FORMAT.md](docs/RELEASE_FORMAT.md)，跨产品目录与流水线规范见
+[docs/PRODUCT_RELEASE_STANDARD.md](docs/PRODUCT_RELEASE_STANDARD.md)，整体设计见
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。

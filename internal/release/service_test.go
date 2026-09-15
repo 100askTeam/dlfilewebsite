@@ -8,9 +8,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"aead.dev/minisign"
@@ -51,6 +53,10 @@ func newReleaseServiceFixture(t *testing.T) (*Service, *store.Store, minisign.Pr
 }
 
 func putIncomingRelease(t *testing.T, service *Service, privateKey minisign.PrivateKey, incomingID, version string, assets []Asset) {
+	putIncomingProductRelease(t, service, privateKey, incomingID, "lynx", version, assets)
+}
+
+func putIncomingProductRelease(t *testing.T, service *Service, privateKey minisign.PrivateKey, incomingID, product, version string, assets []Asset) {
 	t.Helper()
 	directory := filepath.Join(service.IncomingDir(), incomingID)
 	if err := os.MkdirAll(directory, 0o750); err != nil {
@@ -72,7 +78,7 @@ func putIncomingRelease(t *testing.T, service *Service, privateKey minisign.Priv
 		asset.Signature = base64.StdEncoding.EncodeToString(reader.Sign(privateKey))
 	}
 	manifest := Manifest{
-		SchemaVersion: 1, Product: "lynx", Channel: "stable", Version: version,
+		SchemaVersion: 1, Product: product, Channel: "stable", Version: version,
 		Notes: "release " + version, Assets: assets,
 	}
 	data, err := json.Marshal(manifest)
@@ -81,6 +87,28 @@ func putIncomingRelease(t *testing.T, service *Service, privateKey minisign.Priv
 	}
 	if err := os.WriteFile(filepath.Join(directory, ManifestName), data, 0o640); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPublishUsesSameToolsContractForUSBToolBox(t *testing.T) {
+	service, _, privateKey, userID, publicDir := newReleaseServiceFixture(t)
+	putIncomingProductRelease(t, service, privateKey, "usbtoolbox-job", "usbtoolbox", "1.0.1", []Asset{{
+		Target: "windows-x86_64", Kind: "full", File: "USBToolBox_1.0.1_x64-setup.exe",
+	}})
+	staged, err := service.ImportIncoming(context.Background(), "usbtoolbox-job", userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Publish(context.Background(), staged.ID); err != nil {
+		t.Fatal(err)
+	}
+	assetPath := filepath.Join(publicDir, "Tools", "usbtoolbox", "releases", "stable", "1.0.1", "USBToolBox_1.0.1_x64-setup.exe")
+	if _, err := os.Stat(assetPath); err != nil {
+		t.Fatal(err)
+	}
+	update, err := service.SelectUpdate(context.Background(), "usbtoolbox", "stable", "windows-x86_64", "1.0.0")
+	if err != nil || update.Asset == nil || update.Asset.URL != "/Tools/usbtoolbox/releases/stable/1.0.1/USBToolBox_1.0.1_x64-setup.exe" {
+		t.Fatalf("unexpected USBToolBox update: %#v, %v", update, err)
 	}
 }
 
@@ -99,10 +127,10 @@ func TestImportPublishAndSelectExactDelta(t *testing.T) {
 	if err != nil || published.Status != "published" {
 		t.Fatalf("unexpected published release: %#v, %v", published, err)
 	}
-	if _, err := os.Stat(filepath.Join(publicDir, "releases", "lynx", "stable", "0.9.1", ManifestName)); err != nil {
+	if _, err := os.Stat(filepath.Join(publicDir, "Tools", "lynx", "releases", "stable", "0.9.1", ManifestName)); err != nil {
 		t.Fatal(err)
 	}
-	assetInfo, err := os.Stat(filepath.Join(publicDir, "releases", "lynx", "stable", "0.9.1", "lynx-full.exe"))
+	assetInfo, err := os.Stat(filepath.Join(publicDir, "Tools", "lynx", "releases", "stable", "0.9.1", "lynx-full.exe"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +146,7 @@ func TestImportPublishAndSelectExactDelta(t *testing.T) {
 	if err != nil || !update.Available || update.Strategy != "delta" || update.Fallback == nil {
 		t.Fatalf("unexpected delta selection: %#v, %v", update, err)
 	}
-	if update.Asset.URL != "/releases/lynx/stable/0.9.1/lynx-0.9.0-0.9.1.patch" {
+	if update.Asset.URL != "/Tools/lynx/releases/stable/0.9.1/lynx-0.9.0-0.9.1.patch" {
 		t.Fatalf("unexpected asset URL: %s", update.Asset.URL)
 	}
 	update, err = service.SelectUpdate(context.Background(), "lynx", "stable", "windows-x86_64", "0.8.9")
@@ -132,6 +160,61 @@ func TestImportPublishAndSelectExactDelta(t *testing.T) {
 	full, err := service.SelectFullUpdate(context.Background(), "lynx", "stable", "windows-x86_64", "0.9.0")
 	if err != nil || full.Strategy != "full" || full.Asset == nil || full.Asset.Kind != "full" || full.Fallback != nil {
 		t.Fatalf("Tauri-compatible selection must force the full fallback: %#v, %v", full, err)
+	}
+}
+
+func TestMigrateLegacyLayoutMovesFilesAndMetadata(t *testing.T) {
+	service, storage, privateKey, userID, publicDir := newReleaseServiceFixture(t)
+	putIncomingRelease(t, service, privateKey, "legacy-job", "0.9.0", []Asset{{
+		Target: "windows-x86_64", Kind: "full", File: "lynx-full.exe",
+	}})
+	staged, err := service.ImportIncoming(context.Background(), "legacy-job", userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, err := service.Publish(context.Background(), staged.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical := PublishedPath("lynx", "stable", "0.9.0")
+	legacy := legacyPublishedPath("lynx", "stable", "0.9.0")
+	canonicalDirectory := filepath.Join(publicDir, filepath.FromSlash(canonical))
+	legacyDirectory := filepath.Join(publicDir, filepath.FromSlash(legacy))
+	if err := os.MkdirAll(filepath.Dir(legacyDirectory), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(canonicalDirectory, legacyDirectory); err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.UpdatePublishedPath(context.Background(), published.ID, canonical, legacy); err != nil {
+		t.Fatal(err)
+	}
+
+	migrations, err := service.MigrateLegacyLayout(context.Background(), true)
+	if err != nil || len(migrations) != 1 {
+		t.Fatalf("unexpected dry-run plan: %#v, %v", migrations, err)
+	}
+	if _, err := os.Stat(filepath.Join(legacyDirectory, ManifestName)); err != nil {
+		t.Fatalf("dry run changed legacy files: %v", err)
+	}
+
+	migrations, err = service.MigrateLegacyLayout(context.Background(), false)
+	if err != nil || len(migrations) != 1 || migrations[0].To != canonical {
+		t.Fatalf("unexpected migration: %#v, %v", migrations, err)
+	}
+	if _, err := os.Stat(filepath.Join(canonicalDirectory, ManifestName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(publicDir, ReleaseDirectoryName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("legacy root should be removed when empty: %v", err)
+	}
+	head, err := storage.ChannelHead(context.Background(), "lynx", "stable")
+	if err != nil || head.PublishedPath != canonical {
+		t.Fatalf("unexpected migrated head: %#v, %v", head, err)
+	}
+	migrations, err = service.MigrateLegacyLayout(context.Background(), false)
+	if err != nil || len(migrations) != 0 {
+		t.Fatalf("migration must be idempotent: %#v, %v", migrations, err)
 	}
 }
 
@@ -149,5 +232,22 @@ func TestPublishRevalidatesStagedBytes(t *testing.T) {
 	}
 	if _, err := service.Publish(context.Background(), staged.ID); err == nil {
 		t.Fatal("tampered staged release was published")
+	}
+}
+
+func TestPublishRejectsSymlinkInCanonicalToolsPath(t *testing.T) {
+	service, _, privateKey, userID, publicDir := newReleaseServiceFixture(t)
+	putIncomingRelease(t, service, privateKey, "symlink-job", "1.0.0", []Asset{{
+		Target: "linux-x86_64", Kind: "full", File: "lynx.AppImage",
+	}})
+	staged, err := service.ImportIncoming(context.Background(), "symlink-job", userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(publicDir, PublicToolsDirectory, "lynx")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Publish(context.Background(), staged.ID); err == nil || !strings.Contains(err.Error(), "unsafe component") {
+		t.Fatalf("publish followed a symlink in Tools path: %v", err)
 	}
 }

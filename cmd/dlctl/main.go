@@ -101,6 +101,30 @@ func run(args []string) error {
 			return err
 		}
 		return printJSON(records)
+	case "migrate-tools-layout":
+		flags := flag.NewFlagSet("migrate-tools-layout", flag.ContinueOnError)
+		dryRun := flags.Bool("dry-run", false, "verify and print the migration plan without changing files or metadata")
+		if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
+			return usageError()
+		}
+		service, storage, actorID, err := openService()
+		if err != nil {
+			return err
+		}
+		defer storage.Close()
+		migrations, err := service.MigrateLegacyLayout(context.Background(), *dryRun)
+		if err != nil {
+			_ = storage.AppendAudit(context.Background(), &actorID, "dlctl", "migrate", "release_layout", "Tools", "local-cli", "dlctl", "failure", detail(err))
+			return err
+		}
+		action := "migrate"
+		resultKey := "migrated"
+		if *dryRun {
+			action = "migrate_check"
+			resultKey = "planned"
+		}
+		_ = storage.AppendAudit(context.Background(), &actorID, "dlctl", action, "release_layout", "Tools", "local-cli", "dlctl", "success", fmt.Sprintf(`{"count":%d}`, len(migrations)))
+		return printJSON(map[string]any{resultKey: migrations, "count": len(migrations), "dry_run": *dryRun})
 	default:
 		return usageError()
 	}
@@ -171,7 +195,7 @@ func printJSON(value any) error {
 }
 
 func usageError() error {
-	return errors.New("usage: dlctl verify DIR | import [--publish] INCOMING_ID | publish ID | list")
+	return errors.New("usage: dlctl verify DIR | import [--publish] INCOMING_ID | publish ID | list | migrate-tools-layout [--dry-run]")
 }
 
 func detail(err error) string {

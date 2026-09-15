@@ -230,7 +230,12 @@ func (a *App) handleTauriUpdateAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "expected product/channel/target/current-version"})
 		return
 	}
-	forceFull := strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Lynx-Update-Mode")), "full")
+	updateMode := strings.TrimSpace(r.Header.Get("X-Update-Mode"))
+	if updateMode == "" {
+		// Compatibility for LYNX clients released before the product-neutral API.
+		updateMode = strings.TrimSpace(r.Header.Get("X-Lynx-Update-Mode"))
+	}
+	forceFull := strings.EqualFold(updateMode, "full")
 	update, err := a.releases.SelectUpdate(r.Context(), parts[0], parts[1], parts[2], parts[3])
 	if forceFull {
 		update, err = a.releases.SelectFullUpdate(r.Context(), parts[0], parts[1], parts[2], parts[3])
@@ -240,7 +245,7 @@ func (a *App) handleTauriUpdateAPI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Vary", "X-Lynx-Update-Mode")
+	w.Header().Set("Vary", "X-Update-Mode, X-Lynx-Update-Mode")
 	if !update.Available {
 		w.WriteHeader(http.StatusNoContent)
 		return

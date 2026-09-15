@@ -44,3 +44,8 @@ https://dl.100ask.net/api/v1/updates/lynx/stable/windows-x86_64/0.9.0
 ```
 
 响应会返回 `delta` 或 `full` 策略。增量响应始终同时携带完整包 fallback。
+正式文件统一位于：
+
+```text
+https://dl.100ask.net/Tools/{product}/releases/{channel}/{version}/{file}
+```

@@ -230,14 +230,44 @@ func TestManagedPathsRejectSymlinksAndTrashIsRecoverable(t *testing.T) {
 }
 
 func TestReleaseDirectoryIsReserved(t *testing.T) {
-	for _, path := range []string{"releases", "releases/lynx/stable", `/releases\\lynx`} {
+	for _, path := range []string{
+		"releases", "releases/lynx/stable", `/releases\\lynx`,
+		"Tools/lynx/releases", "Tools/usbtoolbox/releases/stable/1.0.0",
+	} {
 		if !isReleaseManagedPath(path) {
 			t.Fatalf("release path was not protected: %q", path)
 		}
 	}
-	for _, path := range []string{"release-notes", "downloads/releases.zip", ""} {
+	for _, path := range []string{"release-notes", "downloads/releases.zip", "Tools", "Tools/lynx", "Tools/lynx/manual", ""} {
 		if isReleaseManagedPath(path) {
 			t.Fatalf("unrelated path was protected: %q", path)
 		}
+	}
+}
+
+func TestLegacyReleaseURLRedirectsIntoToolsNamespace(t *testing.T) {
+	app := newTestApp(t)
+	canonicalDirectory := filepath.Join(app.baseDir, "Tools", "lynx", "releases", "stable", "0.9.0")
+	if err := os.MkdirAll(canonicalDirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(canonicalDirectory, "release-set.json"), []byte(`{"schema_version":1}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	canonicalRequest := httptest.NewRequest(http.MethodGet, "http://dl.test/Tools/lynx/releases/stable/0.9.0/release-set.json", nil)
+	canonicalResult := httptest.NewRecorder()
+	app.handler().ServeHTTP(canonicalResult, canonicalRequest)
+	if canonicalResult.Code != http.StatusOK || canonicalResult.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
+		t.Fatalf("signed release manifest was not public and immutable: status=%d headers=%v", canonicalResult.Code, canonicalResult.Header())
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "http://dl.test/releases/lynx/stable/0.9.0/LYNX.exe", nil)
+	result := httptest.NewRecorder()
+	app.handler().ServeHTTP(result, request)
+	if result.Code != http.StatusPermanentRedirect {
+		t.Fatalf("redirect status=%d body=%s", result.Code, result.Body.String())
+	}
+	if location := result.Header().Get("Location"); location != "/Tools/lynx/releases/stable/0.9.0/LYNX.exe" {
+		t.Fatalf("unexpected redirect location: %q", location)
 	}
 }

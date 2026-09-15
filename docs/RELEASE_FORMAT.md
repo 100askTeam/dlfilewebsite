@@ -60,11 +60,20 @@ release-set/
 DL_RELEASE_PUBLIC_KEY_FILE=./release.pub dlctl verify ./release-set
 ```
 
+审批发布后，同一发布集的清单、完整安装包、增量包及其他声明资产全部落在：
+
+```text
+/Tools/<product>/releases/<channel>/<version>/
+```
+
+例如 LYNX v0.9.1 使用 `/Tools/lynx/releases/stable/0.9.1/`；USBToolBox v1.0.1
+使用 `/Tools/usbtoolbox/releases/stable/1.0.1/`。站点根级 `/releases` 不存放资产。
+
 更新查询：
 
 - `GET /api/v1/updates/lynx/stable/windows-x86_64/0.9.0` 返回完整的选择结果，包含
   `strategy`、资产摘要和完整包 fallback；
 - `GET /api/v1/tauri/lynx/stable/windows-x86_64/0.9.0` 返回 Tauri 更新器格式，默认选择
   精确兼容的增量包；
-- 同一 Tauri 请求带 `X-Lynx-Update-Mode: full` 时强制返回完整包。此请求头只改变资产选择，
-  不关闭签名校验。
+- 同一 Tauri 请求带通用的 `X-Update-Mode: full` 时强制返回完整包。旧 LYNX 客户端的
+  `X-Lynx-Update-Mode: full` 仅作为兼容别名保留；请求头只改变资产选择，不关闭签名校验。
