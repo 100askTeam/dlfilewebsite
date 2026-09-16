@@ -3,6 +3,8 @@ set -euo pipefail
 
 readonly version='v1.2.0'
 readonly release_base="https://github.com/100askTeam/dlfilewebsite/releases/download/dladmin-go-${version}"
+readonly source_commit='fbf3c6e901b24037cb537e1e6bc5d75141adc986'
+readonly source_base="https://raw.githubusercontent.com/100askTeam/dlfilewebsite/${source_commit}"
 readonly state_dir='/home1/dlfile-state'
 readonly code_build_dir='/home1/dladmin-code/current/build'
 readonly wrapper_path='/usr/local/libexec/dl-release-command'
@@ -33,8 +35,23 @@ stamp="$(date +%Y%m%d%H%M%S)"
 
 download() {
   local file=$1
-  curl -fL --retry 5 --retry-delay 2 \
-    "${release_base}/${file}" -o "${upgrade_dir}/${file}"
+  local destination="${upgrade_dir}/${file}"
+  local partial="${destination}.part"
+
+  if ! curl -fL --retry 5 --retry-all-errors --retry-delay 2 \
+    --speed-limit 1024 --speed-time 60 \
+    --continue-at - "${release_base}/${file}" -o "$partial"; then
+    if [[ "$file" != 'dladmin-go.service' ]]; then
+      return 1
+    fi
+    echo 'release download failed; retrying dladmin-go.service from the pinned source commit' >&2
+    rm -f "$partial"
+    curl -fL --retry 5 --retry-all-errors --retry-delay 2 \
+      --speed-limit 1024 --speed-time 60 \
+      "${source_base}/deploy/systemd/dladmin-go.service" -o "$partial"
+  fi
+
+  mv "$partial" "$destination"
 }
 
 for file in dladmin-go.gz dlctl.gz dl-release-command dladmin-go.service; do
@@ -45,7 +62,7 @@ cat >"${upgrade_dir}/SHA256SUMS.required" <<'SUMS'
 6606a5c714a2816aea087917f48e5c4e6083ec75900a8544633728b86840f955  dladmin-go.gz
 e866022bdbe1267ac7db4378d324a40c1569af6f8545175c7194b1971f43c6a8  dlctl.gz
 492d591660df8517fe62db6928888f6b612a0b6faa1ced6841fa4a3218f6d6a8  dl-release-command
-8adbb831c7a24d0464c7e3e152b14a5cf5dc2f77fca0cb5e1c0901b008e3ac1  dladmin-go.service
+8adbb831c7a24d0464c7e3e152b14a5cf5dc2f77fca0cb5e1c0901b008e3ac1b  dladmin-go.service
 SUMS
 (cd "$upgrade_dir" && sha256sum -c SHA256SUMS.required)
 
