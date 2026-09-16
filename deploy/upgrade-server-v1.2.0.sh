@@ -16,7 +16,7 @@ if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
   exit 2
 fi
 
-for required in curl gzip sha256sum install systemctl pgrep; do
+for required in curl gzip sha256sum install systemctl pgrep sleep; do
   command -v "$required" >/dev/null || {
     echo "required command is missing: $required" >&2
     exit 2
@@ -33,22 +33,35 @@ test -x "$wrapper_path"
 upgrade_dir="$(mktemp -d "${state_dir}/server-upgrade-${version}.XXXXXX")"
 stamp="$(date +%Y%m%d%H%M%S)"
 
+fetch_with_resume() {
+  local url=$1
+  local partial=$2
+  local attempt
+
+  for attempt in {1..6}; do
+    if curl -fL --speed-limit 1024 --speed-time 60 \
+      --continue-at - "$url" -o "$partial"; then
+      return 0
+    fi
+    echo "download attempt ${attempt}/6 failed; retrying in 2 seconds: ${url}" >&2
+    sleep 2
+  done
+  return 1
+}
+
 download() {
   local file=$1
   local destination="${upgrade_dir}/${file}"
   local partial="${destination}.part"
 
-  if ! curl -fL --retry 5 --retry-all-errors --retry-delay 2 \
-    --speed-limit 1024 --speed-time 60 \
-    --continue-at - "${release_base}/${file}" -o "$partial"; then
+  if ! fetch_with_resume "${release_base}/${file}" "$partial"; then
     if [[ "$file" != 'dladmin-go.service' ]]; then
       return 1
     fi
     echo 'release download failed; retrying dladmin-go.service from the pinned source commit' >&2
     rm -f "$partial"
-    curl -fL --retry 5 --retry-all-errors --retry-delay 2 \
-      --speed-limit 1024 --speed-time 60 \
-      "${source_base}/deploy/systemd/dladmin-go.service" -o "$partial"
+    fetch_with_resume \
+      "${source_base}/deploy/systemd/dladmin-go.service" "$partial"
   fi
 
   mv "$partial" "$destination"
