@@ -147,7 +147,9 @@ test "$(SSH_ORIGINAL_COMMAND=release-channel-probe-v3 "$wrapper_path")" = \
 curl -fsS -o /dev/null \
   https://dl.100ask.net/Tools/lynx/stable/0.9.1/release-set.json
 
-echo "dladmin-go ${version} is active; PID=$(systemctl show -p MainPID --value dladmin-go)"
+main_pid_property="$(systemctl show -p MainPID dladmin-go)"
+main_pid="${main_pid_property#MainPID=}"
+echo "dladmin-go ${version} is active; PID=${main_pid}"
 echo "LYNX key: $(head -n 1 "${keyring_dir}/lynx.pub")"
 echo "USBToolBox key: $(head -n 1 "${keyring_dir}/usbtoolbox.pub")"
 echo "Backup timestamp: ${stamp}"
