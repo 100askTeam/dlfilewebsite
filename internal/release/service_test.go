@@ -97,6 +97,46 @@ func putIncomingProductRelease(t *testing.T, service *Service, privateKey minisi
 	}
 }
 
+func putIncomingV2Release(t *testing.T, service *Service, privateKey minisign.PrivateKey, incomingID, version string, assets []Asset) {
+	t.Helper()
+	directory := filepath.Join(service.IncomingDir(), incomingID)
+	if err := os.MkdirAll(directory, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for index := range assets {
+		asset := &assets[index]
+		data := []byte("signed bytes for " + asset.File)
+		if asset.Storage == "site" {
+			if err := os.WriteFile(filepath.Join(directory, asset.File), data, 0o640); err != nil {
+				t.Fatal(err)
+			}
+		}
+		reader := minisign.NewReader(bytes.NewReader(data))
+		if _, err := io.Copy(io.Discard, reader); err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(data)
+		asset.Size = int64(len(data))
+		asset.SHA256 = hex.EncodeToString(sum[:])
+		asset.Signature = base64.StdEncoding.EncodeToString(reader.Sign(privateKey))
+	}
+	manifest := Manifest{SchemaVersion: 2, Product: "lynx", Channel: "stable", Version: version, Notes: "release " + version, Assets: assets}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, ManifestName), data, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	reader := minisign.NewReader(bytes.NewReader(data))
+	if _, err := io.Copy(io.Discard, reader); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, ManifestSignature), []byte(base64.StdEncoding.EncodeToString(reader.Sign(privateKey))), 0o640); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPublishUsesSameToolsContractForUSBToolBox(t *testing.T) {
 	service, _, privateKey, userID, publicDir := newReleaseServiceFixture(t)
 	putIncomingProductRelease(t, service, privateKey, "usbtoolbox-job", "usbtoolbox", "1.0.1", []Asset{{
@@ -167,6 +207,44 @@ func TestImportPublishAndSelectExactDelta(t *testing.T) {
 	full, err := service.SelectFullUpdate(context.Background(), "lynx", "stable", "windows-x86_64", "0.9.0")
 	if err != nil || full.Strategy != "full" || full.Asset == nil || full.Asset.Kind != "full" || full.Fallback != nil {
 		t.Fatalf("Tauri-compatible selection must force the full fallback: %#v, %v", full, err)
+	}
+}
+
+func TestSchema2PublishesOnlyDeltaAndSelectsGitHubFullFallback(t *testing.T) {
+	service, _, privateKey, userID, publicDir := newReleaseServiceFixture(t)
+	putIncomingV2Release(t, service, privateKey, "delta-only-site", "0.9.2", []Asset{
+		{Target: "windows-x86_64", Kind: "full", File: "LYNX_0.9.2_x64-setup.exe", Storage: "external", Mirrors: []string{"https://github.com/dshanpi/lynx-releases/releases/download/v0.9.2/LYNX_0.9.2_x64-setup.exe"}},
+		{Target: "windows-x86_64", Kind: "delta", FromVersion: "0.9.1", File: "LYNX_0.9.2_from_0.9.1_x64-delta.exe", Storage: "site"},
+	})
+	staged, err := service.ImportIncoming(context.Background(), "delta-only-site", userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Publish(context.Background(), staged.ID); err != nil {
+		t.Fatal(err)
+	}
+	directory := filepath.Join(publicDir, "Tools", "lynx", "stable", "0.9.2")
+	if _, err := os.Stat(filepath.Join(directory, "LYNX_0.9.2_x64-setup.exe")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("external full installer must not exist on the download site: %v", err)
+	}
+	for _, name := range []string{ManifestName, ManifestSignature, "LYNX_0.9.2_from_0.9.1_x64-delta.exe"} {
+		if _, err := os.Stat(filepath.Join(directory, name)); err != nil {
+			t.Fatalf("published site asset %s: %v", name, err)
+		}
+	}
+	update, err := service.SelectUpdate(context.Background(), "lynx", "stable", "windows-x86_64", "0.9.1")
+	if err != nil || update.Strategy != "delta" || update.Asset == nil || update.Fallback == nil {
+		t.Fatalf("unexpected exact delta selection: %#v, %v", update, err)
+	}
+	if update.Asset.URL != "/Tools/lynx/stable/0.9.2/LYNX_0.9.2_from_0.9.1_x64-delta.exe" {
+		t.Fatalf("delta must use the download site: %s", update.Asset.URL)
+	}
+	if update.Fallback.URL != "https://github.com/dshanpi/lynx-releases/releases/download/v0.9.2/LYNX_0.9.2_x64-setup.exe" {
+		t.Fatalf("full fallback must use GitHub: %s", update.Fallback.URL)
+	}
+	full, err := service.SelectFullUpdate(context.Background(), "lynx", "stable", "windows-x86_64", "0.9.1")
+	if err != nil || full.Asset == nil || full.Asset.URL != update.Fallback.URL {
+		t.Fatalf("forced full must select GitHub: %#v, %v", full, err)
 	}
 }
 

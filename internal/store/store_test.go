@@ -115,7 +115,7 @@ func TestReleaseLifecycleAndChannelHead(t *testing.T) {
 		t.Fatalf("unexpected staged release: %#v, %v", first, err)
 	}
 	assets, err := storage.ReleaseAssets(ctx, firstID)
-	if err != nil || len(assets) != 1 || assets[0].FileName != "lynx.exe" {
+	if err != nil || len(assets) != 1 || assets[0].FileName != "lynx.exe" || assets[0].Storage != "site" {
 		t.Fatalf("unexpected assets: %#v, %v", assets, err)
 	}
 	if err := storage.PublishRelease(ctx, firstID, "releases/lynx/stable/0.9.0"); err != nil {

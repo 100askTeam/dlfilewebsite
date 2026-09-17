@@ -156,6 +156,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			sha256 TEXT NOT NULL,
 			signature TEXT NOT NULL,
 			mirrors_json TEXT NOT NULL DEFAULT '[]',
+			storage TEXT NOT NULL DEFAULT 'site' CHECK(storage IN ('site','external')),
 			UNIQUE(release_id,target,kind,from_version)
 		)`,
 		`CREATE TABLE IF NOT EXISTS channel_heads (
@@ -172,6 +173,37 @@ func (s *Store) migrate(ctx context.Context) error {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("apply migration: %w", err)
 		}
+	}
+	assetColumns, err := tx.QueryContext(ctx, `PRAGMA table_info(release_assets)`)
+	if err != nil {
+		return fmt.Errorf("inspect release_assets columns: %w", err)
+	}
+	hasStorage := false
+	for assetColumns.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err := assetColumns.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			_ = assetColumns.Close()
+			return fmt.Errorf("scan release_assets column: %w", err)
+		}
+		if name == "storage" {
+			hasStorage = true
+		}
+	}
+	if err := assetColumns.Close(); err != nil {
+		return fmt.Errorf("close release_assets columns: %w", err)
+	}
+	if !hasStorage {
+		if _, err := tx.ExecContext(ctx,
+			`ALTER TABLE release_assets ADD COLUMN storage TEXT NOT NULL DEFAULT 'site' CHECK(storage IN ('site','external'))`); err != nil {
+			return fmt.Errorf("add release asset storage: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO schema_migrations(version,name,applied_at)
+		 VALUES(3,'external_release_asset_storage',unixepoch())`); err != nil {
+		return fmt.Errorf("record release asset storage migration: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit migration: %w", err)

@@ -10,6 +10,8 @@ probe_request_v2=release-channel-probe-v2
 probe_response_v2='dl-release-command protocol=2'
 probe_request_v3=release-channel-probe-v3
 probe_response_v3='dl-release-command protocol=3'
+probe_request_v4=release-channel-probe-v4
+probe_response_v4='dl-release-command protocol=4'
 
 deny() {
   echo "release SSH command denied" >&2
@@ -34,6 +36,10 @@ parse_command() {
   fi
   if [[ "$normalized" == "$probe_request_v3" ]]; then
     parsed_action=probe-v3
+    return 0
+  fi
+  if [[ "$normalized" == "$probe_request_v4" ]]; then
+    parsed_action=probe-v4
     return 0
   fi
 
@@ -95,6 +101,7 @@ self_test() {
   parse_command "$probe_request_v1" && [[ "$parsed_action" == probe-v1 ]]
   parse_command "$probe_request_v2" && [[ "$parsed_action" == probe-v2 ]]
   parse_command "$probe_request_v3" && [[ "$parsed_action" == probe-v3 ]]
+  parse_command "$probe_request_v4" && [[ "$parsed_action" == probe-v4 ]]
   parse_command "install -d -m 0750 '$incoming/.part-$id'" &&
     [[ "$parsed_action" == install && "$parsed_arg1" == "$id" ]]
   parse_command "scp -p -t '$incoming/.part-$id/'" &&
@@ -114,6 +121,7 @@ self_test() {
     'bash' \
     "$probe_request_v2; id" \
     "$probe_request_v3; id" \
+    "$probe_request_v4; id" \
     "install -d -m 0750 '$incoming/.part-$id'; id" \
     "install -d -m 0750 '$incoming/.part-$too_long'" \
     "scp -r -t '$incoming/.part-$id/'" \
@@ -147,6 +155,9 @@ case "$parsed_action" in
     ;;
   probe-v3)
     printf '%s\n' "$probe_response_v3"
+    ;;
+  probe-v4)
+    printf '%s\n' "$probe_response_v4"
     ;;
   install)
     exec /usr/bin/install -d -m 0750 "$incoming/.part-$parsed_arg1"

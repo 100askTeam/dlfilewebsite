@@ -3,7 +3,7 @@ description: Verify the restricted channel and stage or publish one product-neut
 
 inputs:
   release-directory:
-    description: Directory containing release-set.json and every declared asset
+    description: Directory containing the signed release set; external assets are declared but not uploaded
     required: true
   remote:
     description: Restricted SSH destination, for example root@dl.100ask.net
@@ -46,8 +46,8 @@ runs:
         DL_REMOTE: ${{ inputs.remote }}
       run: |
         set -euo pipefail
-        actual="$(ssh -o BatchMode=yes -o IdentitiesOnly=yes "$DL_REMOTE" release-channel-probe-v2)"
-        test "$actual" = 'dl-release-command protocol=2'
+        actual="$(ssh -o BatchMode=yes -o IdentitiesOnly=yes "$DL_REMOTE" release-channel-probe-v4)"
+        test "$actual" = 'dl-release-command protocol=4'
 
     - name: Upload signed release set
       shell: bash

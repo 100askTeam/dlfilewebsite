@@ -1,6 +1,7 @@
 package release
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -22,6 +23,7 @@ import (
 
 const (
 	ManifestName      = "release-set.json"
+	ManifestSignature = "release-set.json.sig"
 	MaxManifestBytes  = 1 << 20
 	MaxReleaseAssets  = 128
 	MaxSignatureBytes = 16 << 10
@@ -52,6 +54,7 @@ type Asset struct {
 	SHA256      string   `json:"sha256"`
 	Signature   string   `json:"signature"`
 	Mirrors     []string `json:"mirrors,omitempty"`
+	Storage     string   `json:"storage,omitempty"`
 }
 
 type Version struct {
@@ -163,6 +166,11 @@ func loadAndVerify(directory string, resolveKey func(string) (minisign.PublicKey
 	if err := validateDirectoryContents(root, manifest); err != nil {
 		return Manifest{}, err
 	}
+	if manifest.SchemaVersion == 2 {
+		if err := verifyManifestSignature(root, data, publicKey); err != nil {
+			return Manifest{}, err
+		}
+	}
 	seen := make(map[string]struct{}, len(manifest.Assets))
 	for index := range manifest.Assets {
 		asset := &manifest.Assets[index]
@@ -171,6 +179,9 @@ func loadAndVerify(directory string, resolveKey func(string) (minisign.PublicKey
 			return Manifest{}, fmt.Errorf("duplicate asset route for %s", asset.File)
 		}
 		seen[identity] = struct{}{}
+		if asset.Storage == "external" {
+			continue
+		}
 		if err := verifyAsset(root, *asset, publicKey); err != nil {
 			return Manifest{}, err
 		}
@@ -184,8 +195,13 @@ func loadAndVerify(directory string, resolveKey func(string) (minisign.PublicKey
 
 func validateDirectoryContents(root string, manifest Manifest) error {
 	expected := map[string]struct{}{ManifestName: {}}
+	if manifest.SchemaVersion == 2 {
+		expected[ManifestSignature] = struct{}{}
+	}
 	for _, asset := range manifest.Assets {
-		expected[asset.File] = struct{}{}
+		if asset.Storage != "external" {
+			expected[asset.File] = struct{}{}
+		}
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -207,7 +223,7 @@ func validateDirectoryContents(root string, manifest Manifest) error {
 }
 
 func validateManifest(manifest Manifest) error {
-	if manifest.SchemaVersion != 1 {
+	if manifest.SchemaVersion != 1 && manifest.SchemaVersion != 2 {
 		return fmt.Errorf("unsupported release schema %d", manifest.SchemaVersion)
 	}
 	if !identifierPattern.MatchString(manifest.Product) {
@@ -253,6 +269,16 @@ func validateManifest(manifest Manifest) error {
 			return fmt.Errorf("invalid signature for %s", asset.File)
 		}
 		allTargets[asset.Target] = true
+		storage := asset.Storage
+		if manifest.SchemaVersion == 1 && storage == "" {
+			storage = "site"
+		}
+		if storage != "site" && storage != "external" {
+			return fmt.Errorf("invalid asset storage for %s", asset.File)
+		}
+		if manifest.SchemaVersion == 2 && asset.Storage == "" {
+			return fmt.Errorf("schema 2 asset %s requires storage", asset.File)
+		}
 		switch asset.Kind {
 		case "full":
 			if asset.FromVersion != "" {
@@ -260,6 +286,9 @@ func validateManifest(manifest Manifest) error {
 			}
 			fullTargets[asset.Target] = true
 		case "delta":
+			if storage != "site" {
+				return fmt.Errorf("delta asset %s must use site storage", asset.File)
+			}
 			from, err := ParseVersion(asset.FromVersion)
 			if err != nil || !DeltaCompatible(from, targetVersion) {
 				return fmt.Errorf("delta %s has incompatible from_version", asset.File)
@@ -276,11 +305,38 @@ func validateManifest(manifest Manifest) error {
 				return fmt.Errorf("invalid HTTPS mirror for %s", asset.File)
 			}
 		}
+		if storage == "external" && len(asset.Mirrors) == 0 {
+			return fmt.Errorf("external asset %s requires an HTTPS mirror", asset.File)
+		}
 	}
 	for target := range allTargets {
 		if !fullTargets[target] {
 			return fmt.Errorf("target %s requires a full fallback asset", target)
 		}
+	}
+	return nil
+}
+
+func verifyManifestSignature(root string, data []byte, publicKey minisign.PublicKey) error {
+	path := filepath.Join(root, ManifestSignature)
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() > MaxSignatureBytes {
+		return errors.New("release-set.json.sig is absent, unsafe, or too large")
+	}
+	encoded, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	signature, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(encoded)))
+	if err != nil || len(signature) > MaxSignatureBytes {
+		return errors.New("release manifest signature is malformed")
+	}
+	reader := minisign.NewReader(bytes.NewReader(data))
+	if _, err := io.Copy(io.Discard, reader); err != nil {
+		return fmt.Errorf("read release manifest for signature verification: %w", err)
+	}
+	if !reader.Verify(publicKey, signature) {
+		return errors.New("release manifest signature mismatch")
 	}
 	return nil
 }

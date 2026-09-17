@@ -125,10 +125,14 @@ func (s *Service) ImportIncoming(ctx context.Context, incomingID string, actorID
 	assets := make([]store.ReleaseAssetInput, 0, len(manifest.Assets))
 	for _, asset := range manifest.Assets {
 		mirrors, _ := json.Marshal(asset.Mirrors)
+		storage := asset.Storage
+		if storage == "" {
+			storage = "site"
+		}
 		assets = append(assets, store.ReleaseAssetInput{
 			Target: asset.Target, Kind: asset.Kind, FromVersion: strings.TrimPrefix(asset.FromVersion, "v"),
 			FileName: asset.File, Size: asset.Size, SHA256: strings.ToLower(asset.SHA256),
-			Signature: asset.Signature, MirrorsJSON: string(mirrors),
+			Signature: asset.Signature, MirrorsJSON: string(mirrors), Storage: storage,
 		})
 	}
 	id, err := s.store.StageRelease(ctx, store.ReleaseRecord{
@@ -456,8 +460,16 @@ func (s *Service) SelectUpdate(ctx context.Context, product, channel, target, cu
 		}
 		var mirrors []string
 		_ = json.Unmarshal([]byte(asset.MirrorsJSON), &mirrors)
+		url := basePath + asset.FileName
+		if asset.Storage == "external" {
+			if len(mirrors) == 0 {
+				return nil
+			}
+			url = mirrors[0]
+			mirrors = mirrors[1:]
+		}
 		return &UpdateAsset{
-			Kind: asset.Kind, FromVersion: asset.FromVersion, URL: basePath + asset.FileName,
+			Kind: asset.Kind, FromVersion: asset.FromVersion, URL: url,
 			Mirrors: mirrors, Size: asset.Size, SHA256: asset.SHA256, Signature: asset.Signature,
 		}
 	}
@@ -465,9 +477,13 @@ func (s *Service) SelectUpdate(ctx context.Context, product, channel, target, cu
 	if strategy == "delta" {
 		fallback = toUpdateAsset(full)
 	}
+	selectedAsset := toUpdateAsset(selected)
+	if selectedAsset == nil {
+		return SelectedUpdate{}, errors.New("release asset has no usable download URL")
+	}
 	return SelectedUpdate{
 		Available: true, Version: head.Version, Notes: head.Notes, PublishedAt: head.PublishedAt,
-		Strategy: strategy, Asset: toUpdateAsset(selected), Fallback: fallback,
+		Strategy: strategy, Asset: selectedAsset, Fallback: fallback,
 	}, nil
 }
 

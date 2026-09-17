@@ -18,20 +18,24 @@ API 与公开目录，发布后不得仅因显示名称变化而修改。
 ```text
 /Tools/<product>/<channel>/<version>/
 ├── release-set.json
-├── <full installer or updater>
-└── <optional exact-version delta>
+├── release-set.json.sig            # schema 2
+├── <full installer or updater>      # 跨兼容线版本
+└── <exact-version delta>            # 兼容小版本
 ```
 
 - `channel` 只能是 `stable`、`beta` 或 `nightly`。
 - `version` 是不带 `v` 的语义版本；目录发布后不可覆盖。
-- 安装包、升级完整包、增量包和清单必须在同一个版本目录内。
+- schema 1 的资产全部在同一版本目录。schema 2 允许签名清单把 GitHub HTTPS 完整包声明为
+  `storage: external`：该完整包不复制到下载站，站内只保存清单签名和 `storage: site` 资产。
 - `/Tools/<product>/` 可继续放人工资料，但 `stable/`、`beta/`、`nightly/` 子树只能由发布服务写入。
 - 根级 `/releases/` 已废弃，只提供 308 跳转，不得保留真实文件。
 
 ## 3. 产品仓库职责
 
 产品仓库负责构建资产、生成 SHA-256、使用受保护的 minisign/Tauri 私钥签名，并生成
-schema 1 的 `release-set.json`。标准 Tauri 项目可先调用
+schema 1 或 schema 2 的 `release-set.json`。schema 2 清单本身必须使用产品 updater 私钥签名为
+`release-set.json.sig`，以便服务端在不下载 GitHub 大文件的前提下验证外部完整包元数据。
+标准 Tauri 项目可先调用
 `100askTeam/dlfilewebsite/.github/actions/prepare-tauri-release@<完整提交 SHA>`，从
 `latest.json` 和签名 updater 资产生成并复验发布集。流水线再把清单声明的文件交给通用
 `100askTeam/dlfilewebsite/.github/actions/publish-release@<完整提交 SHA>`；不得自行 SCP
@@ -43,7 +47,7 @@ schema 1 的 `release-set.json`。标准 Tauri 项目可先调用
 1. tag 仅构建候选和 GitHub Draft；
 2. 完成目标机安装、覆盖升级和签名验收；
 3. 人工触发 promotion，将发布集上传为 `staged`；
-4. 服务端验签、摘要校验和版本单调检查通过后再发布 stable；
+4. 服务端验签清单及所有站内资产、完成摘要校验和版本单调检查后再发布 stable；
 5. 反向下载主站资产复核摘要，最后公开 GitHub Release。
 
 不同产品应使用各自的发布仓库、GitHub Environment 和 updater 签名密钥。服务器通过
@@ -73,7 +77,8 @@ GET /api/v1/updates/<product>/<channel>/<target>/<current-version>
 GET /api/v1/tauri/<product>/<channel>/<target>/<current-version>
 ```
 
-客户端下载 `url` 后必须复核签名与 SHA-256。需要完整包恢复时使用
+客户端下载 `url` 后必须复核签名与 SHA-256；`url` 可能属于 `/Tools`，也可能是签名清单
+声明的 GitHub HTTPS 外部完整包。需要完整包恢复时使用
 `X-Update-Mode: full`。产品仓库只配置 API，不配置 `/Tools/...` 中某个版本的静态地址。
 
 示例：
@@ -104,3 +109,12 @@ tag -> 多平台构建/签名 -> GitHub Draft -> prepare-tauri-release
 
 tag 阶段不得修改公开下载站；promotion 必须最后才公开 GitHub Release。下载站不得从 GitHub
 拉取大文件，丢失版本只能由 Runner 使用 recover Action 恢复既有不可变记录。
+
+## 7. 分级存储策略
+
+- GitHub Draft/Release 始终保留每个平台的签名完整包。
+- 产品可以启用兼容小版本差分策略：同 semver major（`0.x` 还要求 minor 相同）的版本，
+  下载站只接收精确基线的 `storage: site` 差分；完整包声明为 `storage: external` 并指向 GitHub。
+- 跨 major，或 `0.x` 跨 minor，完整包必须使用 `storage: site`；差分禁止跨该边界。
+- 启用该策略的产品若兼容小版本没有合格差分，promotion 必须失败，不能静默上传站内完整包。
+- 该策略由产品 promotion 明确启用；未启用差分的现有产品可继续使用 schema 1 完整包流程。

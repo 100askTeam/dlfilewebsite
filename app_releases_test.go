@@ -116,3 +116,13 @@ func TestTauriEndpointSelectsDeltaAndHonorsFullFallbackHeader(t *testing.T) {
 		t.Fatalf("legacy LYNX header must remain compatible: %#v", legacyFull)
 	}
 }
+
+func TestReleaseAssetURLPreservesVerifiedHTTPSFallback(t *testing.T) {
+	if got := releaseAssetURL("https://dl.100ask.net", "/Tools/lynx/stable/1.0.0/lynx.exe"); got != "https://dl.100ask.net/Tools/lynx/stable/1.0.0/lynx.exe" {
+		t.Fatalf("unexpected site URL: %s", got)
+	}
+	github := "https://github.com/dshanpi/lynx-releases/releases/download/v1.0.1/lynx.exe"
+	if got := releaseAssetURL("https://dl.100ask.net", github); got != github {
+		t.Fatalf("external fallback was prefixed by the download site: %s", got)
+	}
+}

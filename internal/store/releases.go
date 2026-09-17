@@ -17,6 +17,7 @@ type ReleaseAssetInput struct {
 	SHA256      string
 	Signature   string
 	MirrorsJSON string
+	Storage     string
 }
 
 type ReleaseRecord struct {
@@ -58,12 +59,16 @@ func (s *Store) StageRelease(
 		return 0, err
 	}
 	for _, asset := range assets {
+		storage := asset.Storage
+		if storage == "" {
+			storage = "site"
+		}
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO release_assets(
-				release_id,target,kind,from_version,file_name,size,sha256,signature,mirrors_json
-			 ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)`,
+				release_id,target,kind,from_version,file_name,size,sha256,signature,mirrors_json,storage
+			 ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)`,
 			releaseID, asset.Target, asset.Kind, asset.FromVersion, asset.FileName,
-			asset.Size, asset.SHA256, asset.Signature, asset.MirrorsJSON); err != nil {
+			asset.Size, asset.SHA256, asset.Signature, asset.MirrorsJSON, storage); err != nil {
 			return 0, fmt.Errorf("insert release asset: %w", err)
 		}
 	}
@@ -230,7 +235,7 @@ func (s *Store) PublishRelease(ctx context.Context, id int64, publishedPath stri
 
 func (s *Store) ReleaseAssets(ctx context.Context, releaseID int64) ([]ReleaseAssetInput, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT target,kind,from_version,file_name,size,sha256,signature,mirrors_json
+		`SELECT target,kind,from_version,file_name,size,sha256,signature,mirrors_json,storage
 		 FROM release_assets WHERE release_id=?1 ORDER BY target,kind,from_version`, releaseID)
 	if err != nil {
 		return nil, fmt.Errorf("list release assets: %w", err)
@@ -240,7 +245,7 @@ func (s *Store) ReleaseAssets(ctx context.Context, releaseID int64) ([]ReleaseAs
 	for rows.Next() {
 		var asset ReleaseAssetInput
 		if err := rows.Scan(&asset.Target, &asset.Kind, &asset.FromVersion, &asset.FileName,
-			&asset.Size, &asset.SHA256, &asset.Signature, &asset.MirrorsJSON); err != nil {
+			&asset.Size, &asset.SHA256, &asset.Signature, &asset.MirrorsJSON, &asset.Storage); err != nil {
 			return nil, fmt.Errorf("scan release asset: %w", err)
 		}
 		assets = append(assets, asset)

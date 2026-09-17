@@ -254,13 +254,20 @@ func (a *App) handleTauriUpdateAPI(w http.ResponseWriter, r *http.Request) {
 		"version":            update.Version,
 		"notes":              update.Notes,
 		"pub_date":           update.PublishedAt,
-		"url":                a.releaseBaseURL + update.Asset.URL,
+		"url":                releaseAssetURL(a.releaseBaseURL, update.Asset.URL),
 		"signature":          update.Asset.Signature,
 		"asset_size":         update.Asset.Size,
 		"asset_sha256":       update.Asset.SHA256,
 		"strategy":           update.Strategy,
 		"fallback_available": update.Fallback != nil,
 	})
+}
+
+func releaseAssetURL(baseURL, assetURL string) string {
+	if strings.HasPrefix(assetURL, "https://") {
+		return assetURL
+	}
+	return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(assetURL, "/")
 }
 
 func jsonDetail(key, value string) string {

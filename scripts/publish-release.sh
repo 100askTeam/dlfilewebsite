@@ -27,8 +27,19 @@ command -v jq >/dev/null || {
   echo "jq is required to select only manifest-declared assets" >&2
   exit 2
 }
-mapfile -t asset_names < <(jq -er '.assets[].file' "$release_dir/release-set.json")
+schema_version=$(jq -er '.schema_version' "$release_dir/release-set.json")
+mapfile -t asset_names < <(jq -er '.assets[] | select((.storage // "site") == "site") | .file' "$release_dir/release-set.json")
 upload_files=("$release_dir/release-set.json")
+if [[ "$schema_version" == "2" ]]; then
+  if [[ ! -f "$release_dir/release-set.json.sig" ]] || [[ -L "$release_dir/release-set.json.sig" ]]; then
+    echo "schema 2 requires a safe release-set.json.sig" >&2
+    exit 2
+  fi
+  upload_files+=("$release_dir/release-set.json.sig")
+elif [[ "$schema_version" != "1" ]]; then
+  echo "unsupported release schema: $schema_version" >&2
+  exit 2
+fi
 declare -A seen_assets=()
 for name in "${asset_names[@]}"; do
   if [[ ! "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]{0,199}$ ]] ||
