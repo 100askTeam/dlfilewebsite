@@ -66,3 +66,27 @@ func TestProtocolV4IsRequiredForTieredReleasePublishing(t *testing.T) {
 		t.Fatal("restricted server command must expose protocol v4")
 	}
 }
+
+func TestV130UpgradePinsPublishedAssetsAndLegacyCompatibleCommands(t *testing.T) {
+	data, err := os.ReadFile("deploy/upgrade-server-v1.3.0.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(data)
+	for _, required := range []string{
+		"readonly version='v1.3.0'",
+		"readonly source_commit='fb6783f713c1d649e569c029b7b91908f3225fe2'",
+		"1a4894901b49cc5fc2424ff645f5c74cd6c7ce9a903ab5ced932a2082b710c5e  dladmin-go.gz",
+		"48a838aabd5eabe8f5e5fbc4f139f93450dea17be36e7aaa9808b97111d1bf0d  dlctl.gz",
+		"3e5d21b0d8d80a6ccbfcba3d7d3a051d86ae324510dd9d2e37d4d839061a86be  dl-release-command",
+		"release-channel-probe-v4",
+		"systemctl show -p MainPID dladmin-go",
+	} {
+		if !strings.Contains(script, required) {
+			t.Fatalf("v1.3.0 upgrade is missing %q", required)
+		}
+	}
+	if strings.Contains(script, "--retry-all-errors") || strings.Contains(script, "--value") {
+		t.Fatal("upgrade script must remain compatible with the production server's legacy curl/systemctl")
+	}
+}
