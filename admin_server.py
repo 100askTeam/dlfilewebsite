@@ -152,6 +152,18 @@ def sanitize_directory_name(name):
     return clean_name
 
 
+def is_apt_managed_path(relative_path=""):
+    normalized = (relative_path or "").strip().replace("\\", "/").strip("/")
+    parts = [part for part in normalized.split("/") if part not in ("", ".")]
+    return bool(parts) and parts[0] in ("apt", "_apt-upload", "_apt-metadata")
+
+
+def is_apt_internal_path(relative_path=""):
+    normalized = (relative_path or "").strip().replace("\\", "/").strip("/")
+    parts = [part for part in normalized.split("/") if part not in ("", ".")]
+    return bool(parts) and parts[0] in ("_apt-upload", "_apt-metadata")
+
+
 def resolve_relative_path(relative_path=""):
     raw_path = (relative_path or "").strip().replace("\\", "/")
     if raw_path in ("", ".", "/"):
@@ -1508,6 +1520,9 @@ def make_directory():
         return jsonify({"success": False, "error": "父目录不存在"}), 404
 
     target_directory = parent_directory / directory_name
+    target_relative = "/".join(part for part in ((parent_path or "").strip("/"), directory_name) if part)
+    if is_apt_managed_path(target_relative):
+        return jsonify({"success": False, "error": "APT 目录不能通过普通文件管理修改"}), 403
     if target_directory.exists():
         return jsonify({"success": False, "error": "目录已存在"}), 400
 
@@ -1537,6 +1552,9 @@ def upload_files():
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
 
+    if is_apt_managed_path(target_path):
+        return jsonify({"success": False, "error": "APT 目录不能通过普通文件管理修改"}), 403
+
     if not directory_path.exists() or not directory_path.is_dir():
         return jsonify({"success": False, "error": "上传目标目录不存在"}), 404
 
@@ -1547,6 +1565,11 @@ def upload_files():
         filename = sanitize_upload_filename(storage.filename)
         if not filename:
             skipped.append(storage.filename or "未命名文件")
+            continue
+
+        candidate_relative = "/".join(part for part in ((target_path or "").strip("/"), filename) if part)
+        if is_apt_managed_path(candidate_relative):
+            skipped.append(filename)
             continue
 
         file_path = directory_path / filename
@@ -1580,6 +1603,9 @@ def upload_files():
 def delete_entry():
     data = request.json or {}
     relative_path = data.get('path', '')
+
+    if is_apt_managed_path(relative_path):
+        return jsonify({"success": False, "error": "APT 目录不能通过普通文件管理删除"}), 403
 
     try:
         target_path = resolve_relative_path(relative_path)
@@ -1667,6 +1693,8 @@ def change_password():
 
 @app.route('/<path:path>')
 def serve_file(path):
+    if is_apt_internal_path(path):
+        return "Not Found", 404
     if path.endswith('/'):
         record_visit("/" + path)
     file_path = BASE_DIR / path

@@ -31,6 +31,13 @@ jobs:
         run: |
           bash -n deploy/ssh/dl-release-command
           bash deploy/ssh/dl-release-command --self-test
+      - name: Test generic signed APT import
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev gnupg xz-utils
+          bash -n deploy/apt/activate-apt-upload.sh
+          python3 -m py_compile deploy/apt/verify-apt-upload.py
+          bash scripts/apt-import-test.sh
       - name: Build static Linux binaries
         env:
           CGO_ENABLED: '0'

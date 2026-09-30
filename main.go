@@ -564,8 +564,8 @@ func (a *App) handleMkdirAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
 		return
 	}
-	if isReleaseManagedPath(path.Join(parentRelative, name)) {
-		writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "版本发布目录只能通过发布流程修改"})
+	if isFileManagerProtectedPath(path.Join(parentRelative, name)) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "受管发布目录不能通过普通文件管理修改"})
 		return
 	}
 	target := filepath.Join(parentDir, name)
@@ -605,8 +605,8 @@ func (a *App) handleUploadAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
 		return
 	}
-	if isReleaseManagedPath(targetRelative) {
-		writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "版本发布目录只能通过发布流程修改"})
+	if isFileManagerProtectedPath(targetRelative) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "受管发布目录不能通过普通文件管理修改"})
 		return
 	}
 	overwrite := strings.EqualFold(r.FormValue("overwrite"), "true")
@@ -623,6 +623,10 @@ func (a *App) handleUploadAPI(w http.ResponseWriter, r *http.Request) {
 		name := filepath.Base(strings.TrimSpace(header.Filename))
 		if name == "" || name == "." || name == ".." {
 			continue
+		}
+		if isFileManagerProtectedPath(path.Join(targetRelative, name)) {
+			writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "受管发布目录不能通过普通文件管理修改"})
+			return
 		}
 		targetPath := filepath.Join(targetDir, name)
 		if err := ensureNoSymlink(a.baseDir, targetPath); err != nil {
@@ -681,8 +685,8 @@ func (a *App) handleDeleteAPI(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
 		return
 	}
-	if isReleaseManagedPath(targetRelative) {
-		writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "已发布版本不可通过文件管理删除"})
+	if isFileManagerProtectedPath(targetRelative) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "error": "受管发布目录不可通过普通文件管理删除"})
 		return
 	}
 	if filepath.Clean(target) == filepath.Clean(a.baseDir) {
@@ -761,6 +765,10 @@ func (a *App) handlePublic(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if isAPTInternalPath(relPath) {
+		http.NotFound(w, r)
+		return
+	}
 	info, err := os.Stat(fullPath)
 	if err != nil {
 		http.NotFound(w, r)
@@ -784,6 +792,8 @@ func (a *App) handlePublic(w http.ResponseWriter, r *http.Request) {
 	}
 	if managedRelease {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else if cacheControl, ok := aptCacheControl(relPath); ok {
+		w.Header().Set("Cache-Control", cacheControl)
 	}
 	a.recordDownload("/" + relPath)
 	http.ServeFile(w, r, fullPath)
@@ -1102,6 +1112,38 @@ func sanitizeName(name string) (string, error) {
 
 func isReleaseManagedPath(relative string) bool {
 	return release.IsManagedPublishedPath(relative)
+}
+
+func isAPTManagedPath(relative string) bool {
+	normalized := strings.TrimPrefix(path.Clean("/"+strings.Trim(strings.ReplaceAll(relative, "\\", "/"), "/")), "/")
+	return normalized == "apt" || strings.HasPrefix(normalized, "apt/") ||
+		normalized == "_apt-upload" || strings.HasPrefix(normalized, "_apt-upload/") ||
+		normalized == "_apt-metadata" || strings.HasPrefix(normalized, "_apt-metadata/")
+}
+
+func isAPTInternalPath(relative string) bool {
+	normalized := strings.TrimPrefix(path.Clean("/"+strings.Trim(strings.ReplaceAll(relative, "\\", "/"), "/")), "/")
+	return normalized == "_apt-upload" || strings.HasPrefix(normalized, "_apt-upload/") ||
+		normalized == "_apt-metadata" || strings.HasPrefix(normalized, "_apt-metadata/")
+}
+
+func isFileManagerProtectedPath(relative string) bool {
+	return isReleaseManagedPath(relative) || isAPTManagedPath(relative)
+}
+
+func aptCacheControl(relative string) (string, bool) {
+	normalized := strings.TrimPrefix(path.Clean("/"+strings.Trim(strings.ReplaceAll(relative, "\\", "/"), "/")), "/")
+	parts := strings.Split(normalized, "/")
+	if len(parts) < 2 || parts[0] != "apt" {
+		return "", false
+	}
+	if parts[1] == "pool" {
+		return "public, max-age=31536000, immutable", true
+	}
+	if parts[1] == "dists" || parts[1] == "catalog" {
+		return "public, max-age=60, must-revalidate", true
+	}
+	return "public, max-age=60, must-revalidate", true
 }
 
 func ensureSubPath(baseDir, target string) error {
