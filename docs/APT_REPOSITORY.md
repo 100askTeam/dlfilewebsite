@@ -42,6 +42,7 @@ systemctl restart dladmin-go
 
 - `SHA256SUMS.asc` 必须由 `/etc/dladmin/apt-keys/dshanpi.gpg` 验证通过。
 - 每个 suite 的 `InRelease`、`Release.gpg` 和 Release SHA256 均重新验证。
+- `*-testing` suite 必须禁止自动选包，stable suite 不得关闭普通 APT 自动升级。
 - Packages、Packages.gz、Packages.xz 必须一致，且引用的 pool 文件大小和 SHA256 正确。
 - 相同 package/version/architecture 不允许对应不同内容。
 - pool 文件只增不改；旧版本默认永久保留。

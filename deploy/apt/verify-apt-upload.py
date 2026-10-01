@@ -83,8 +83,13 @@ def verify_release(upload: Path, keyring: Path, suite_dir: Path) -> None:
             fail(f"InRelease verification failed: {suite_dir.name}")
     verify_detached(keyring, detached, release)
     release_text = release.read_text()
-    if "NotAutomatic: yes\n" not in release_text or "ButAutomaticUpgrades: no\n" not in release_text:
-        fail(f"unsafe automatic-upgrade policy: {suite_dir.name}")
+    not_automatic = "NotAutomatic: yes\n" in release_text
+    blocks_automatic_upgrades = "ButAutomaticUpgrades: no\n" in release_text
+    if suite_dir.name.endswith("-testing"):
+        if not not_automatic or not blocks_automatic_upgrades:
+            fail(f"unsafe testing upgrade policy: {suite_dir.name}")
+    elif not_automatic or blocks_automatic_upgrades:
+        fail(f"stable suite disables automatic upgrades: {suite_dir.name}")
 
     sha_section = release_text.split("\nSHA256:\n", 1)
     if len(sha_section) != 2:
