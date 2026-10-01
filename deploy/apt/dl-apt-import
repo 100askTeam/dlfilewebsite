@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ $# -eq 1 && "$1" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$ ]] || {
+	echo "Usage: dl-apt-import JOB_ID" >&2
+	exit 2
+}
+exec /home1/dladmin-code/current/deploy/apt/activate-apt-upload.sh "$1"

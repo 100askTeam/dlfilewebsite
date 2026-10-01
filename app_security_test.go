@@ -245,6 +245,51 @@ func TestReleaseDirectoryIsReserved(t *testing.T) {
 	}
 }
 
+func TestAPTDirectoryIsReservedAndUsesSplitCaching(t *testing.T) {
+	for _, candidate := range []string{
+		"apt",
+		"apt/dists/noble/InRelease",
+		"apt/pool/dshanpi-a1-cm5/l/linux-image/package.deb",
+		`_apt-upload\20260930T120000Z-0123456789abcdef`,
+		"_apt-metadata/dists/noble/revision/InRelease",
+	} {
+		if !isFileManagerProtectedPath(candidate) {
+			t.Fatalf("APT path was not protected: %q", candidate)
+		}
+	}
+	if isFileManagerProtectedPath("apt-notes") {
+		t.Fatal("unrelated path was protected")
+	}
+	if !isAPTInternalPath("_apt-metadata/dists/noble") || isAPTInternalPath("apt/dists/noble") {
+		t.Fatal("APT internal/public path classification is incorrect")
+	}
+	metadata, ok := aptCacheControl("apt/dists/noble/InRelease")
+	if !ok || metadata != "public, max-age=60, must-revalidate" {
+		t.Fatalf("unexpected metadata cache policy: %q, %v", metadata, ok)
+	}
+	deb, ok := aptCacheControl("apt/pool/common/d/dspi-config/package.deb")
+	if !ok || deb != "public, max-age=31536000, immutable" {
+		t.Fatalf("unexpected package cache policy: %q, %v", deb, ok)
+	}
+}
+
+func TestAPTInternalMetadataIsNotPublic(t *testing.T) {
+	app := newTestApp(t)
+	internal := filepath.Join(app.baseDir, "_apt-metadata", "secret.txt")
+	if err := os.MkdirAll(filepath.Dir(internal), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(internal, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "http://dl.test/_apt-metadata/secret.txt", nil)
+	result := httptest.NewRecorder()
+	app.handler().ServeHTTP(result, request)
+	if result.Code != http.StatusNotFound {
+		t.Fatalf("internal APT metadata was public: status=%d", result.Code)
+	}
+}
+
 func TestLegacyReleaseURLRedirectsIntoToolsNamespace(t *testing.T) {
 	app := newTestApp(t)
 	canonicalDirectory := filepath.Join(app.baseDir, "Tools", "lynx", "stable", "0.9.0")
